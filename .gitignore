@@ -1,4 +1,7 @@
 /.idea/
+build/
+log/
+install/
 /cmake-build-debug/
 *.pcd
 /Log/pos_log.csv
