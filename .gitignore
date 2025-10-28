@@ -5,3 +5,7 @@ install/
 /cmake-build-debug/
 *.pcd
 /Log/pos_log.csv
+
+
+# data
+b2_ros2_humble/
