@@ -1264,7 +1264,7 @@ int main(int argc, char **argv) {
             /******* Publish points *******/
             if (path_en) publish_path(pubPath);
             if (scan_pub_en || pcd_save_en) publish_frame_world(pubLaserCloudFullRes);
-            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
+            if (scan_pub_en && scan_bodyframe_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
 
             /*** Debug variables Logging ***/
             if (runtime_pos_log) {

@@ -39,8 +39,12 @@ extern std::vector<double> gravity_init, gravity;
 extern std::vector<double> extrinT;
 extern std::vector<double> extrinR;
 extern bool runtime_pos_log, pcd_save_en, path_en;
-extern bool scan_pub_en, scan_body_pub_en;
+extern bool scan_pub_en, scan_bodyframe_pub_en;
 extern shared_ptr<Preprocess> p_pre;
 extern double time_lag_imu_to_lidar;
+//localization mode parameters
+extern bool flg_islocation_mode;
+extern std::string map_path;
+extern double initial_z;
 
 void readParameters(shared_ptr<rclcpp::Node> &nh);

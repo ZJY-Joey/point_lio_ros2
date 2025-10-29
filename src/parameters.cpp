@@ -28,9 +28,12 @@ std::vector<double> gravity_init, gravity;
 std::vector<double> extrinT;
 std::vector<double> extrinR;
 bool runtime_pos_log, pcd_save_en, path_en, extrinsic_est_en = true;
-bool scan_pub_en, scan_body_pub_en;
+bool scan_pub_en, scan_bodyframe_pub_en;
 shared_ptr<Preprocess> p_pre;
 double time_lag_imu_to_lidar = 0.0;
+bool flg_islocation_mode = false;
+std::string map_path = "";
+double initial_z = 0.0;
 
 void readParameters(shared_ptr<rclcpp::Node> &nh) {
     p_pre.reset(new Preprocess());
@@ -93,6 +96,10 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->declare_parameter<bool>("runtime_pos_log_enable", false);
     nh->declare_parameter<bool>("pcd_save.pcd_save_en", false);
     nh->declare_parameter<int>("pcd_save.interval", -1);
+    //localization mode parameters
+    nh->declare_parameter<bool>("location_mode", false);
+    nh->declare_parameter<std::string>("map_path", "");
+    nh->declare_parameter<double>("initial_z", 0.0);
 
     // 使用get_parameter方法获取参数值
     nh->get_parameter("odom_only", odom_only);
@@ -149,9 +156,13 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->get_parameter("odometry.publish_odometry_without_downsample", publish_odometry_without_downsample);
     nh->get_parameter("publish.path_en", path_en);
     nh->get_parameter("publish.scan_publish_en", scan_pub_en);
-    nh->get_parameter("publish.scan_bodyframe_pub_en", scan_body_pub_en);
+    nh->get_parameter("publish.scan_bodyframe_pub_en", scan_bodyframe_pub_en);
     nh->get_parameter("runtime_pos_log_enable", runtime_pos_log);
     nh->get_parameter("pcd_save.pcd_save_en", pcd_save_en);
     nh->get_parameter("pcd_save.interval", pcd_save_interval);
+    //localization mode parameters
+    nh->get_parameter("location_mode", flg_islocation_mode);
+    nh->get_parameter("map_path", map_path);
+    nh->get_parameter("initial_z", initial_z);
 }
 
