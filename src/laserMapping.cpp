@@ -22,13 +22,42 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 #include "parameters.h"
 #include "Estimator.h"
+#include "perf.h"
+#include "log.h"
+#include <pcl/registration/icp.h>
+#include <pcl/registration/ndt.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
 
 
 #define MAXN                (720000)
 #define PUBFRAME_PERIOD     (20)
+
+// for location mode
+/// \brief 定位初始化标志位
+bool flg_location_inited = false;
+bool flg_get_init_guess = false;
+/// \brief 初始化姿态
+Eigen::Vector3d init_translation = Eigen::Vector3d::Zero();
+Eigen::Quaterniond init_rotation = Eigen::Quaterniond::Identity();
+/// \brief 初始位置和方向
+Eigen::Vector3d initial_position = Eigen::Vector3d::Zero();
+Eigen::Quaterniond initial_orientation = Eigen::Quaterniond::Identity();
+/// \brief 地图点云
+PointCloudXYZI::Ptr map_cloud(new PointCloudXYZI());
+/// \brief 初始点云发布器
+rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubInitialCloud;       
+mutex init_lock; 
+/// \brief tf坐标变换
+std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+geometry_msgs::msg::TransformStamped tf_world2odom, tf_aft2base;
+
+
 
 const float MOV_THRESHOLD = 1.5f;
 
@@ -62,6 +91,7 @@ deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_deque;
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body_space(new PointCloudXYZI());
 PointCloudXYZI::Ptr init_feats_world(new PointCloudXYZI());
+PointCloudXYZI::Ptr init_total_world(new PointCloudXYZI());
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 pcl::VoxelGrid<PointType> downSizeFilterMap;
@@ -494,6 +524,165 @@ void map_incremental() {
     ikdtree.Add_Points(PointNoNeedDownsample, false);
 }
 
+/// \brief 初始姿态回调函数  接收外部重定位点，并在点的0.4米范围，高度0.5米范围内搜索重定位点。
+/// \param pose_msg
+void initialpose_cbk(
+    const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr pose_msg) {
+    RCLCPP_INFO(logger, "Receive init pose");
+    if (flg_location_inited) {
+        return;
+    }
+    // TODO: safe lock_guard check
+    std::lock_guard<std::mutex> guard(init_lock);
+
+    init_translation[0] = pose_msg->pose.pose.position.x;
+    init_translation[1] = pose_msg->pose.pose.position.y;
+
+    double sum_z = 0.0, delta_x, delta_y, distance;
+    PointType p;
+    int count = 0;
+    for (std::size_t i = 0; i < map_cloud->points.size(); i++) {
+        p = map_cloud->points[i];
+        float z_diff = std::fabs(p.z - initial_z);
+        if (z_diff > 0.5) {
+        continue;
+        }
+
+        delta_x = p.x - pose_msg->pose.pose.position.x;
+        delta_y = p.y - pose_msg->pose.pose.position.y;
+        distance = sqrt(delta_x * delta_x + delta_y * delta_y);
+        if (distance < 0.4) {
+        sum_z += p.z;
+        count++;
+        }
+    }
+    if (count != 0) {
+        init_translation[2] = sum_z / count;
+    } else {
+        init_translation[2] = initial_z;
+    }
+
+    init_rotation = Eigen::Quaterniond(
+        pose_msg->pose.pose.orientation.w, pose_msg->pose.pose.orientation.x,
+        pose_msg->pose.pose.orientation.y, pose_msg->pose.pose.orientation.z);
+
+    flg_get_init_guess = true;
+    RCLCPP_INFO(logger, "Init translation: %f %f %f", init_translation(0),
+            init_translation(1), init_translation(2));
+    RCLCPP_INFO(logger, "Init quaternion: %f %f %f %f.", init_rotation.w(),
+            init_rotation.x(), init_rotation.y(), init_rotation.z());
+}
+
+/// \brief 使用NDT+ICP进行初始位姿估计 获得重定位变换矩阵
+void initial_pose() {
+    Eigen::Affine3d init_guess;
+    if (flg_get_init_guess) {
+        Eigen::Matrix4d init_guess_matrix = Eigen::Matrix4d::Identity();
+        init_guess_matrix.block<3, 3>(0, 0) = init_rotation.toRotationMatrix();
+        init_guess_matrix.block<3, 1>(0, 3) = init_translation;
+        std::lock_guard<std::mutex> guard(init_lock);
+        init_guess.matrix() = init_guess_matrix;
+    } else {
+        return;
+    }
+
+    //计时宏开始
+    MFLA_TIMER_BLOCK_START();
+    // source 点云降采样
+    PointCloudXYZI::Ptr source_cloud_ds(new PointCloudXYZI);
+    downSizeFilterSurf.setInputCloud(init_total_world);
+    downSizeFilterSurf.filter(*source_cloud_ds);
+
+    // from coarse(ndt) to fine(icp)
+    pcl::NormalDistributionsTransform<PointType, PointType> ndt;
+    ndt.setTransformationEpsilon(1e-4);
+    ndt.setEuclideanFitnessEpsilon(1e-4);
+    ndt.setMaximumIterations(40);
+    ndt.setResolution(0.5);
+    ndt.setInputSource(source_cloud_ds);
+    ndt.setInputTarget(map_cloud);
+
+    pcl::IterativeClosestPoint<PointType, PointType> icp;
+    icp.setMaxCorrespondenceDistance(40);
+    icp.setMaximumIterations(100);
+    icp.setTransformationEpsilon(1e-6);
+    icp.setEuclideanFitnessEpsilon(1e-6);
+    // icp.setRANSACIterations(0);
+    icp.setInputSource(source_cloud_ds);
+    icp.setInputTarget(map_cloud);
+
+    pcl::PointCloud<PointType>::Ptr unused_result(
+        new pcl::PointCloud<PointType>());
+    ndt.align(*unused_result, init_guess.matrix().cast<float>());
+    if (ndt.hasConverged()) {
+        icp.align(*unused_result, ndt.getFinalTransformation());
+    } else {
+        RCLCPP_WARN(logger, "NDT has not converged!Please try again!");
+        return;
+    }
+    //计时宏结束
+    MFLA_TIMER_BLOCK_END("Initializetion Regisration");
+    // 发布初始化点云
+    Eigen::Matrix4f cloud_aligned_pose = icp.getFinalTransformation();
+    pcl::PointCloud<PointType>::Ptr cloud_aligned(
+        new pcl::PointCloud<PointType>());
+    pcl::transformPointCloud(*init_total_world, *cloud_aligned,
+                            cloud_aligned_pose);
+    sensor_msgs::msg::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*cloud_aligned, cloud_msg);
+    cloud_msg.header.stamp = get_ros_time(lidar_end_time);
+    cloud_msg.header.frame_id = "camera_init";
+    pubInitialCloud->publish(cloud_msg);
+
+    double score = icp.getFitnessScore();
+    if (icp.hasConverged() == false || score == 0.0 || score > 0.5) {
+        RCLCPP_ERROR(logger, "Global Initializing Fail with %f!", score);
+        flg_location_inited = false;
+        if (flg_get_init_guess) {
+        flg_get_init_guess= false;
+        }
+        return;
+    } else {
+        init_guess = icp.getFinalTransformation().cast<double>();
+
+        initial_position = init_guess.translation();
+        initial_orientation = Eigen::Quaterniond(init_guess.rotation());
+
+        RCLCPP_INFO(logger, "\033[1;35m Initializing Succeed with %f score! \033[0m", score);
+        RCLCPP_INFO(logger, "\033[1;35m Initializing Position: %f %f %f,%f %f %f %f.\033[0m",
+                initial_position(0), initial_position(1), initial_position(2),
+                initial_orientation.w(), initial_orientation.x(),
+                initial_orientation.y(), initial_orientation.z());
+
+        flg_location_inited = true;
+
+        // if (!use_imu_as_input) {
+        //   Eigen::Matrix<double, 30, 30>
+        //       P_init_output;  // = MD(24, 24)::Identity() * 0.01;
+        //   reset_cov_output(P_init_output);
+
+        //   state_out = state_output();
+        //   state_out.pos = final_position;
+        //   state_out.rot = final_rotation.toRotationMatrix();
+
+        //   kf_output.change_P(P_init_output);
+        //   kf_output.x_.pos = final_position;
+        //   kf_output.x_.rot = final_rotation.toRotationMatrix();
+        // } else {
+        //   Eigen::Matrix<double, 24, 24> P_init;  // = MD(24, 24)::Identity() *
+        //   0.01; reset_cov(P_init);
+
+        //   state_in = state_input();
+        //   state_in.pos = final_position;
+        //   state_in.rot = final_rotation.toRotationMatrix();
+
+        //   kf_input.change_P(P_init);
+        //   kf_input.x_.pos = final_position;
+        //   kf_input.x_.rot = final_rotation.toRotationMatrix();
+        // }
+    }
+}
+
 void publish_init_kdtree(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudFullRes) {
     
     if (odom_only) {return;}
@@ -714,6 +903,9 @@ int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
     auto nh = std::make_shared<rclcpp::Node>("laserMapping");
     readParameters(nh);
+
+    ivox = std::make_shared<IVoxType>(ivox_options);
+
     cout << "lidar_type: " << lidar_type << endl;
 
     path.header.stamp = get_ros_time(lidar_end_time);
@@ -783,11 +975,21 @@ int main(int argc, char **argv) {
     }
     auto sub_imu = nh->create_subscription<sensor_msgs::msg::Imu>(imu_topic, 200000, imu_cbk);
 
+
+
+    //sub initial pose
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_init_pose;
+    if (location_mode) {
+        sub_init_pose = nh->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 1, initialpose_cbk);
+    }
+    
+
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFullRes_body;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudEffect;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
+    
 
     if (!odom_only){
         pubLaserCloudFullRes = nh->create_publisher<sensor_msgs::msg::PointCloud2>
@@ -811,10 +1013,51 @@ int main(int argc, char **argv) {
         pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
                 ("/aft_mapped_to_init", 100000);
     }
+    pubInitialCloud = nh->create_publisher<sensor_msgs::msg::PointCloud2>
+                ("/cloud_initial", 10);
 
     //auto plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>
     //        ("/planner_normal", 1000);
+    //TODO: tf tree should be checked
     auto tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
+
+
+    // create shared buffer and listener (listener stores a reference to the buffer)
+    tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
+    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
+    try {
+        RCLCPP_INFO(logger, "Waiting for tf...");
+        // use buffer->canTransform / lookupTransform in ROS2
+        if (!tf_buffer->canTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
+            RCLCPP_WARN(logger, "can't transform world -> camera_init yet");
+        }
+        if (!tf_buffer->canTransform("aft_mapped", "aliengo", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
+            RCLCPP_WARN(logger, "can't transform aft_mapped -> aliengo yet");
+        }
+        tf_world2odom = tf_buffer->lookupTransform("world", "camera_init", rclcpp::Time(0));
+        tf_aft2base = tf_buffer->lookupTransform("aft_mapped", "aliengo", rclcpp::Time(0));
+    } catch (tf2::TransformException &ex) {
+        RCLCPP_WARN(logger, "%s", ex.what());
+    }
+
+    ///  读取地图点云并发布
+    if (location_mode) {
+        RCLCPP_INFO(logger, "Loading global map...");
+        pcl::io::loadPCDFile(map_path, *map_cloud);
+        RCLCPP_INFO(logger, "Load map cloud with size: %zu.", map_cloud->points.size());
+
+        pcl::VoxelGrid<PointType> sor;
+        sor.setInputCloud(map_cloud);
+        sor.setLeafSize(0.1, 0.1, 0.4);
+        sor.filter(*map_cloud);
+
+        sensor_msgs::msg::PointCloud2 laserCloudmsg;
+        pcl::toROSMsg(*map_cloud, laserCloudmsg);
+        laserCloudmsg.header.stamp = rclcpp::Clock().now();
+        laserCloudmsg.header.frame_id = "camera_init";
+        pubLaserCloudMap->publish(laserCloudmsg);
+    }
+
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     rclcpp::Rate rate(5000);
@@ -826,6 +1069,47 @@ int main(int argc, char **argv) {
         executor.spin_some(); // 处理当前可用的回调
 
         if (sync_packages(Measures)) {
+            //location mode to initial pose
+            if (location_mode && !flg_location_inited) {
+                PointCloudXYZI::Ptr init_world(new PointCloudXYZI());
+                init_world->resize(Measures.lidar->points.size());
+                for (int i = 0; i < Measures.lidar->points.size(); i++) {
+                pointBodyToWorld(&(Measures.lidar->points[i]),
+                                &(init_world->points[i]));
+                }
+
+                if (init_total_world->points.size() > 10000) {
+                initial_pose();
+                if (!flg_location_inited) {
+                    continue;
+                }
+                } else {
+                *init_total_world += *init_world;
+                continue;
+                }
+            }
+            // 重置定位
+            if (flg_reset) {
+                RCLCPP_WARN(logger, "reset when rosbag play back");
+                p_imu->Reset();
+                feats_undistort.reset(new PointCloudXYZI());
+                if (use_imu_as_input) {
+                // state_in = kf_input.get_x();
+                state_in = state_input();
+                kf_input.change_P(P_init);
+                } else {
+                // state_out = kf_output.get_x();
+                state_out = state_output();
+                kf_output.change_P(P_init_output);
+                }
+                flg_first_scan = true;
+                is_first_frame = true;
+                flg_reset = false;
+                init_map = false;
+
+                ivox.reset(new IVoxType(ivox_options));
+            }
+
             if (flg_first_scan) {
                 first_lidar_time = Measures.lidar_beg_time;
                 flg_first_scan = false;

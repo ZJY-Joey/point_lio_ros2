@@ -7,6 +7,7 @@ PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_world(new PointCloudXYZI());
 std::vector<V3D> pbody_list;
 std::vector<PointVector> Nearest_Points;
+std::shared_ptr<IVoxType> ivox = nullptr;  // localmap in ivox
 KD_TREE<PointType> ikdtree;
 std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
 bool point_selected_surf[100000] = {0};

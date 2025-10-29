@@ -49,6 +49,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
 
 find_package(Eigen3 REQUIRED)
+find_package(fmt REQUIRED) 
 
 
 # OpenMP
@@ -68,7 +69,7 @@ include_directories(
 )
 
 # Declare a ROS2 executable
-add_executable(pointlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/parameters.cpp src/preprocess.cpp src/Estimator.cpp)
+add_executable(pointlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/parameters.cpp src/preprocess.cpp src/Estimator.cpp src/loguru.cpp src/log.cpp src/perf.cpp)
 ament_target_dependencies(pointlio_mapping
         rclcpp
         rclpy
@@ -81,8 +82,8 @@ ament_target_dependencies(pointlio_mapping
         visualization_msgs
         livox_ros_driver2
 )
-target_link_libraries(pointlio_mapping ${PYTHON_LIBRARIES})
-target_include_directories(pointlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(pointlio_mapping ${PYTHON_LIBRARIES} fmt::fmt)
+target_include_directories(pointlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS}  )
 
 # Install the executable
 install(TARGETS

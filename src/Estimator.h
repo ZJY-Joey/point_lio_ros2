@@ -10,6 +10,8 @@
 #include <pcl/filters/voxel_grid.h>
 #include <ikd-Tree/ikd_Tree.h>
 #include <pcl/io/pcd_io.h>
+#include <ivox/ivox3d.h>
+#include "perf.h"
 
 extern PointCloudXYZI::Ptr normvec; //(new PointCloudXYZI(100000, 1));
 extern std::vector<int> time_seq;

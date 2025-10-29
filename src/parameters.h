@@ -8,6 +8,15 @@
 #include <cstring>
 #include <string>
 #include "preprocess.h"
+#include <ivox/ivox3d.h>
+
+// #define IVOX_NODE_TYPE_PHC
+
+#ifdef IVOX_NODE_TYPE_PHC
+    using IVoxType = faster_lio::IVox<3, faster_lio::IVoxNodeType::PHC, PointType>;
+#else
+    using IVoxType = faster_lio::IVox<3, faster_lio::IVoxNodeType::DEFAULT, PointType>;
+#endif
 
 extern bool odom_only;
 extern std::string odom_header_frame_id;
@@ -43,8 +52,10 @@ extern bool scan_pub_en, scan_bodyframe_pub_en;
 extern shared_ptr<Preprocess> p_pre;
 extern double time_lag_imu_to_lidar;
 //localization mode parameters
-extern bool flg_islocation_mode;
+extern bool location_mode;
 extern std::string map_path;
 extern double initial_z;
+extern std::shared_ptr<IVoxType> ivox;  
+extern IVoxType::Options ivox_options;
 
 void readParameters(shared_ptr<rclcpp::Node> &nh);

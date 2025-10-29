@@ -8,6 +8,9 @@ double lidar_end_time = 0.0, first_lidar_time = 0.0, time_con = 0.0;
 double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0;
 int pcd_index = 0;
 
+IVoxType::Options ivox_options;
+int ivox_nearby_type = 6;
+
 std::string lid_topic, imu_topic;
 bool prop_at_freq_of_imu, check_satu, con_frame, cut_frame;
 bool use_imu_as_input, space_down_sample, publish_odometry_without_downsample;
@@ -31,7 +34,7 @@ bool runtime_pos_log, pcd_save_en, path_en, extrinsic_est_en = true;
 bool scan_pub_en, scan_bodyframe_pub_en;
 shared_ptr<Preprocess> p_pre;
 double time_lag_imu_to_lidar = 0.0;
-bool flg_islocation_mode = false;
+bool location_mode = false;
 std::string map_path = "";
 double initial_z = 0.0;
 
@@ -100,6 +103,8 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->declare_parameter<bool>("location_mode", false);
     nh->declare_parameter<std::string>("map_path", "");
     nh->declare_parameter<double>("initial_z", 0.0);
+    nh->declare_parameter<float>("mapping/ivox_grid_resolution", 0.2);
+    nh->declare_parameter<int>("ivox_nearby_type", 18);
 
     // 使用get_parameter方法获取参数值
     nh->get_parameter("odom_only", odom_only);
@@ -161,8 +166,24 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->get_parameter("pcd_save.pcd_save_en", pcd_save_en);
     nh->get_parameter("pcd_save.interval", pcd_save_interval);
     //localization mode parameters
-    nh->get_parameter("location_mode", flg_islocation_mode);
+    nh->get_parameter("location_mode", location_mode);
     nh->get_parameter("map_path", map_path);
     nh->get_parameter("initial_z", initial_z);
+    nh->get_parameter("mapping/ivox_grid_resolution", ivox_options.resolution_);
+    nh->get_parameter("ivox_nearby_type", ivox_nearby_type);
+
+    if (ivox_nearby_type == 0) {
+        ivox_options.nearby_type_ = IVoxType::NearbyType::CENTER;
+    } else if (ivox_nearby_type == 6) {
+        ivox_options.nearby_type_ = IVoxType::NearbyType::NEARBY6;
+    } else if (ivox_nearby_type == 18) {
+        ivox_options.nearby_type_ = IVoxType::NearbyType::NEARBY18;
+    } else if (ivox_nearby_type == 26) {
+        ivox_options.nearby_type_ = IVoxType::NearbyType::NEARBY26;
+    } else {
+        // LOG(WARNING) << "unknown ivox_nearby_type, use NEARBY18";
+        ivox_options.nearby_type_ = IVoxType::NearbyType::NEARBY18;
+    }
+
 }
 
