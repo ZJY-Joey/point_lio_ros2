@@ -16,20 +16,26 @@ def generate_launch_description():
     laser_mapping_params = [
         PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'config', 'avia.yaml'
+            'config', 'mid360_b2.yaml'
         ]),
         {
-            'use_imu_as_input': True,  # Change to True to use IMU as input of Point-LIO
-            'prop_at_freq_of_imu': True,
+            'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
+            'prop_at_freq_of_imu': False,
             'check_satu': True,
             'init_map_size': 10,
-            'point_filter_num': 1,  # options: 4, 3
+            'point_filter_num': 3   ,  # Options: 1, 3
             'space_down_sample': True,
-            'filter_size_surf': 0.3,  # options: 0.5, 0.3, 0.2, 0.15, 0.1
-            'filter_size_map': 0.2,  # options: 0.5, 0.3, 0.15, 0.1
-            'cube_side_length': 2000.0,  # option: 1000
-            'runtime_pos_log_enable': False,  # option: True
-        },
+            # TODO: changee parameters in need if experiments are not good
+            'filter_size_surf': 0.5,  # Options: 0.5, 0.3, 0.2, 0.15, 0.1
+            'filter_size_map': 0.5,  # Options: 0.5, 0.3, 0.15, 0.1
+            'cube_side_length': 1000.0,  # Option: 1000
+            'runtime_pos_log_enable': False,  # Option: True
+            # localization parameters
+            'location_mode': True,
+            'map_path': '/home/zjy/code/atecup/point_lio_ros2/b2_ros2_humble/maps/4.pcd',
+            'publish/scan_bodyframe_pub_en': True,
+            'pcd_save/pcd_save_en': False,
+        }
     ]
 
     # Node definition for laserMapping with Point-LIO
