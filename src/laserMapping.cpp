@@ -311,6 +311,7 @@ void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) {
         if (frame_ct == 0) {
             time_con = last_timestamp_lidar; //get_time_sec(msg->header.stamp);
         }
+        // accumulate points for localization
         if (frame_ct < con_frame_num) {
             for (int i = 0; i < ptr->size(); i++) {
                 ptr->points[i].curvature += (last_timestamp_lidar - time_con) * 1000;
