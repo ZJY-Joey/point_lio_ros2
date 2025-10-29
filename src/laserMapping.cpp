@@ -32,6 +32,7 @@
 #include <pcl/registration/ndt.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 
 #define MAXN                (720000)
@@ -825,62 +826,179 @@ void set_twist(T &out) {
     }
 }
 
-void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped,
-                      std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_br) {
+// void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped,
+//                       std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_br) {
 
-    odomAftMapped.header.frame_id = odom_header_frame_id;
-    odomAftMapped.child_frame_id = odom_child_frame_id;
+//     odomAftMapped.header.frame_id = odom_header_frame_id;
+//     odomAftMapped.child_frame_id = odom_child_frame_id;
+
+//     if (publish_odometry_without_downsample) {
+//         odomAftMapped.header.stamp = get_ros_time(time_current);
+//     } else {
+//         odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+//     }
+//     set_posestamp(odomAftMapped.pose.pose);
+//     set_twist(odomAftMapped.twist.twist);
+
+//     if (odom_only){
+//         Matrix3d cov = kf_output.get_P().block<3, 3>(0, 0);
+
+//         // Get the position components (first 3x3)
+//         for (int i = 0; i < 3; i++) {
+//             for (int j = 0; j < 3; j++) {
+//                 odomAftMapped.pose.covariance[6 * i + j] = cov(i, j);
+//             }
+//         }
+
+//         odomAftMapped.pose.covariance[21] = 0.0;    // Covariance for roll
+//         odomAftMapped.pose.covariance[28] = 0.0;    // Covariance for pitch
+//         odomAftMapped.pose.covariance[35] = 0.05;   // Covariance for yaw
+
+//         odomAftMapped.twist.covariance[0] = 0.1;    // Covariance for linear velocity on x
+//         odomAftMapped.twist.covariance[7] = 0.1;    // Covariance for linear velocity on y
+//         odomAftMapped.twist.covariance[14] = 0.0;   // Covariance for linear velocity on z
+//         odomAftMapped.twist.covariance[21] = 0.0;  // Covariance for angular velocity (roll)
+//         odomAftMapped.twist.covariance[28] = 0.0;  // Covariance for angular velocity (pitch)
+//         odomAftMapped.twist.covariance[35] = 0.05;  // Covariance for angular velocity (yaw)
+//     }
+
+//     pubOdomAftMapped->publish(odomAftMapped);
+
+//     //static tf2_ros::TransformBroadcaster br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
+//     geometry_msgs::msg::TransformStamped transform;
+//     transform.header.frame_id = odom_header_frame_id;
+//     transform.child_frame_id = odom_child_frame_id;
+
+//     transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
+//     transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
+//     transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
+
+//     transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
+//     transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
+//     transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
+//     transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
+
+//     transform.header.stamp = odomAftMapped.header.stamp;
+
+//     tf_br->sendTransform(transform);
+// }
+
+// publish odometry information for b2 configuration
+void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped,
+                      const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pub_base_odom,
+                      const rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr &pub_base_pose,
+                      const std::shared_ptr<tf2_ros::TransformBroadcaster> &tf_broadcaster) {
+    nav_msgs::msg::Odometry odomAftMapped;
+    odomAftMapped.header.frame_id = "camera_init";
+    odomAftMapped.child_frame_id = "aft_mapped";
 
     if (publish_odometry_without_downsample) {
-        odomAftMapped.header.stamp = get_ros_time(time_current);
+        odomAftMapped.header.stamp = rclcpp::Time(time_current * 1e9); // Convert seconds to nanoseconds
     } else {
-        odomAftMapped.header.stamp = get_ros_time(lidar_end_time);
+        odomAftMapped.header.stamp = rclcpp::Time(lidar_end_time * 1e9);
     }
     set_posestamp(odomAftMapped.pose.pose);
-    set_twist(odomAftMapped.twist.twist);
 
-    if (odom_only){
-        Matrix3d cov = kf_output.get_P().block<3, 3>(0, 0);
+    // Add velocity information
+    if (!use_imu_as_input) {
+        odomAftMapped.twist.twist.linear.x = kf_output.x_.vel(0);
+        odomAftMapped.twist.twist.linear.y = kf_output.x_.vel(1);
+        odomAftMapped.twist.twist.linear.z = kf_output.x_.vel(2);
 
-        // Get the position components (first 3x3)
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                odomAftMapped.pose.covariance[6 * i + j] = cov(i, j);
-            }
-        }
+        odomAftMapped.twist.twist.angular.x = kf_output.x_.omg(0);
+        odomAftMapped.twist.twist.angular.y = kf_output.x_.omg(1);
+        odomAftMapped.twist.twist.angular.z = kf_output.x_.omg(2);
+    } else {
+        odomAftMapped.twist.twist.linear.x = kf_input.x_.vel(0);
+        odomAftMapped.twist.twist.linear.y = kf_input.x_.vel(1);
+        odomAftMapped.twist.twist.linear.z = kf_input.x_.vel(2);
 
-        odomAftMapped.pose.covariance[21] = 0.0;    // Covariance for roll
-        odomAftMapped.pose.covariance[28] = 0.0;    // Covariance for pitch
-        odomAftMapped.pose.covariance[35] = 0.05;   // Covariance for yaw
-
-        odomAftMapped.twist.covariance[0] = 0.1;    // Covariance for linear velocity on x
-        odomAftMapped.twist.covariance[7] = 0.1;    // Covariance for linear velocity on y
-        odomAftMapped.twist.covariance[14] = 0.0;   // Covariance for linear velocity on z
-        odomAftMapped.twist.covariance[21] = 0.0;  // Covariance for angular velocity (roll)
-        odomAftMapped.twist.covariance[28] = 0.0;  // Covariance for angular velocity (pitch)
-        odomAftMapped.twist.covariance[35] = 0.05;  // Covariance for angular velocity (yaw)
+        Eigen::Vector3d gyro_world =
+            Eigen::Quaterniond(kf_input.x_.rot).toRotationMatrix() * input_in.gyro;
+        odomAftMapped.twist.twist.angular.x = gyro_world(0);
+        odomAftMapped.twist.twist.angular.y = gyro_world(1);
+        odomAftMapped.twist.twist.angular.z = gyro_world(2);
     }
 
     pubOdomAftMapped->publish(odomAftMapped);
 
-    //static tf2_ros::TransformBroadcaster br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-    geometry_msgs::msg::TransformStamped transform;
-    transform.header.frame_id = odom_header_frame_id;
-    transform.child_frame_id = odom_child_frame_id;
+    geometry_msgs::msg::TransformStamped transformStamped;
+    transformStamped.header.stamp = odomAftMapped.header.stamp;
+    transformStamped.header.frame_id = "camera_init";
+    transformStamped.child_frame_id = "aft_mapped";
+    transformStamped.transform.translation.x = odomAftMapped.pose.pose.position.x;
+    transformStamped.transform.translation.y = odomAftMapped.pose.pose.position.y;
+    transformStamped.transform.translation.z = odomAftMapped.pose.pose.position.z;
+    transformStamped.transform.rotation = odomAftMapped.pose.pose.orientation;
 
-    transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
-    transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
-    transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
+    tf_broadcaster->sendTransform(transformStamped);
 
-    transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
-    transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
-    transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
-    transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
+    // Transform calculations
+    tf2::Transform tf_odom2base, tf_world2base;
+    tf2::Transform tf_world2odom_tf, tf_aft2base_tf;
+    tf2::fromMsg(tf_world2odom.transform, tf_world2odom_tf);
+    tf2::fromMsg(tf_aft2base.transform, tf_aft2base_tf);
 
-    transform.header.stamp = odomAftMapped.header.stamp;
+    tf_odom2base = tf_aft2base_tf * tf2::Transform(tf2::Quaternion(
+        odomAftMapped.pose.pose.orientation.x,
+        odomAftMapped.pose.pose.orientation.y,
+        odomAftMapped.pose.pose.orientation.z,
+        odomAftMapped.pose.pose.orientation.w),
+        tf2::Vector3(
+            odomAftMapped.pose.pose.position.x,
+            odomAftMapped.pose.pose.position.y,
+            odomAftMapped.pose.pose.position.z));
 
-    tf_br->sendTransform(transform);
+    tf_world2base = tf_world2odom_tf * tf_odom2base;
+
+    nav_msgs::msg::Odometry odom_msg;
+    odom_msg.header.stamp = odomAftMapped.header.stamp;
+    odom_msg.header.frame_id = "world";
+    odom_msg.child_frame_id = "aliengo";
+    odom_msg.pose.pose.position.x = tf_world2base.getOrigin().x();
+    odom_msg.pose.pose.position.y = tf_world2base.getOrigin().y();
+    odom_msg.pose.pose.position.z = tf_world2base.getOrigin().z();
+    geometry_msgs::msg::Quaternion orientation_msg;
+    tf2::convert(tf_world2base.getRotation(), orientation_msg);
+    odom_msg.pose.pose.orientation = orientation_msg;
+
+    
+
+    tf2::Vector3 twist_world(odomAftMapped.twist.twist.linear.x,
+                             odomAftMapped.twist.twist.linear.y,
+                             odomAftMapped.twist.twist.linear.z);
+    tf2::Matrix3x3 q_world(tf_world2base.getRotation());
+    tf2::Vector3 twist_base = q_world.inverse() * twist_world;
+
+    odom_msg.twist.twist.linear.x = twist_base.x();
+    odom_msg.twist.twist.linear.y = twist_base.y();
+    odom_msg.twist.twist.angular.z = odomAftMapped.twist.twist.angular.z;
+
+    pub_base_odom->publish(odom_msg);
+
+    geometry_msgs::msg::PoseWithCovarianceStamped msg_pose;
+    msg_pose.header.frame_id = "world";
+    msg_pose.header.stamp = rclcpp::Time(lidar_end_time * 1e9);
+    msg_pose.pose.pose.position.x = tf_world2base.getOrigin().x();
+    msg_pose.pose.pose.position.y = tf_world2base.getOrigin().y();
+    msg_pose.pose.pose.position.z = tf_world2base.getOrigin().z();
+    geometry_msgs::msg::Quaternion quat_msg;
+    tf2::convert(tf_world2base.getRotation(), quat_msg);
+    msg_pose.pose.pose.orientation = quat_msg;
+
+    Eigen::Matrix<double, 6, 6> cov;
+    if (use_imu_as_input) {
+        cov = kf_input.get_P().topLeftCorner(6, 6);
+    } else {
+        cov = kf_output.get_P().topLeftCorner(6, 6);
+    }
+    for (int i = 0; i < 36; ++i) {
+        msg_pose.pose.covariance[i] = cov(i / 6, i % 6);
+    }
+
+    pub_base_pose->publish(msg_pose);
 }
+
 
 void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath) {
 
@@ -989,6 +1107,8 @@ int main(int argc, char **argv) {
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudEffect;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
     
 
     if (!odom_only){
@@ -1012,6 +1132,8 @@ int main(int argc, char **argv) {
     } else {
         pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
                 ("/aft_mapped_to_init", 100000);
+        pub_base_odom = nh->create_publisher<nav_msgs::msg::Odometry>("/base_odom", 100);
+        pub_base_pose = nh->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/livox_pose", 100);
     }
     pubInitialCloud = nh->create_publisher<sensor_msgs::msg::PointCloud2>
                 ("/cloud_initial", 10);
@@ -1355,7 +1477,7 @@ int main(int argc, char **argv) {
                     if (publish_odometry_without_downsample) {
                         /******* Publish odometry *******/
 
-                        publish_odometry(pubOdomAftMapped, tf_broadcaster);
+                        publish_odometry(pubOdomAftMapped, pub_base_odom, pub_base_pose, tf_broadcaster);
                         if (runtime_pos_log) {
                             state_out = kf_output.x_;
                             euler_cur = SO3ToEuler(state_out.rot);
@@ -1508,7 +1630,7 @@ int main(int argc, char **argv) {
                     if (publish_odometry_without_downsample) {
                         /******* Publish odometry *******/
 
-                        publish_odometry(pubOdomAftMapped, tf_broadcaster);
+                        publish_odometry(pubOdomAftMapped, pub_base_odom, pub_base_pose, tf_broadcaster);
                         if (runtime_pos_log) {
                             state_in = kf_input.x_;
                             euler_cur = SO3ToEuler(state_in.rot);
@@ -1534,7 +1656,7 @@ int main(int argc, char **argv) {
 
             /******* Publish odometry downsample *******/
             if (!publish_odometry_without_downsample) {
-                publish_odometry(pubOdomAftMapped, tf_broadcaster);
+                publish_odometry(pubOdomAftMapped, pub_base_odom, pub_base_pose, tf_broadcaster);
             }
 
             /*** add the feature points to map kdtree ***/

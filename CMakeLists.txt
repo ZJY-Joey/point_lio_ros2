@@ -50,6 +50,8 @@ find_package(livox_ros_driver2 REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED) 
+find_package(tf2 REQUIRED) 
+find_package(tf2_geometry_msgs REQUIRED) 
 
 
 # OpenMP
@@ -79,10 +81,12 @@ ament_target_dependencies(pointlio_mapping
         pcl_ros
         pcl_conversions
         tf2_ros
+        tf2
         visualization_msgs
         livox_ros_driver2
+        tf2_geometry_msgs
 )
-target_link_libraries(pointlio_mapping ${PYTHON_LIBRARIES} fmt::fmt)
+target_link_libraries(pointlio_mapping ${PYTHON_LIBRARIES} fmt::fmt tf2::tf2 tf2_ros::tf2_ros tf2_geometry_msgs::tf2_geometry_msgs)
 target_include_directories(pointlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS}  )
 
 # Install the executable
@@ -108,6 +112,8 @@ ament_export_dependencies(rclcpp
   visualization_msgs
   livox_ros_driver2
   Eigen3
+  tf2_geometry_msgs
+  tf2
 )
 
 ament_package()
