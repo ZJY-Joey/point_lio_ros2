@@ -25,6 +25,8 @@
 /// *************Preconfiguration
 
 #define MAX_INI_COUNT (100)
+const bool time_list(PointType &x,
+                     PointType &y);  // {return (x.curvature < y.curvature);};
 
 /// *************IMU Process and undistortion
 class ImuProcess {
@@ -40,17 +42,23 @@ public:
     //void Reset(double start_timestamp, const sensor_msgs::msg::Imu::ConstSharedPtr &lastimu);
 
     void Process(const MeasureGroup &meas, const PointCloudXYZI::Ptr &pcl_un_);
-
+    void set_gyr_cov(const V3D &scaler);
+    void set_acc_cov(const V3D &scaler);
     void Set_init(Eigen::Vector3d &tmp_gravity, Eigen::Matrix3d &rot);
 
+    MD(12, 12) state_cov = MD(12, 12)::Identity();
     ofstream fout_imu;
     // double first_lidar_time;
     int lidar_type;
     bool imu_en;
     V3D mean_acc, gravity_;
     bool imu_need_init_ = true;
+    bool after_imu_init_ = false;
     bool b_first_frame_ = true;
     bool gravity_align_ = false;
+    double time_last_scan = 0.0;
+    V3D cov_gyr_scale = V3D(0.0001, 0.0001, 0.0001);
+    V3D cov_vel_scale = V3D(0.0001, 0.0001, 0.0001);
 
 private:
     void IMU_init(const MeasureGroup &meas, int &N);
@@ -73,11 +81,16 @@ ImuProcess::~ImuProcess() {}
 
 void ImuProcess::Reset() {
     RCLCPP_WARN(logger, "Reset ImuProcess");
-    mean_acc = V3D(0, 0, -1.0);
-    mean_gyr = V3D(0, 0, 0);
+    // mean_acc = V3D(0, 0, -1.0);
+    //TODO: check gravity init 统一贴合重力方向
+    mean_acc = V3D(0, 0, -1.0); 
     imu_need_init_ = true;
     init_iter_num = 1;
+    after_imu_init_ = false;
+
+    time_last_scan = 0.0;
 }
+
 
 void ImuProcess::IMU_init(const MeasureGroup &meas, int &N) {
     /** 1. initializing the gravity, gyro bias, acc and gyro covariance
@@ -126,15 +139,25 @@ void ImuProcess::Process(const MeasureGroup &meas, const PointCloudXYZI::Ptr &cu
             }
             return;
         }
-        if (!gravity_align_) gravity_align_ = true;
+        // if (!gravity_align_) gravity_align_ = true;
+        // *cur_pcl_un_ = *(meas.lidar);
+        // return;
+        if (!after_imu_init_) {
+        after_imu_init_ = true;
+        }
         *cur_pcl_un_ = *(meas.lidar);
         return;
-    } else {
-        if (!b_first_frame_) { if (!gravity_align_) gravity_align_ = true; }
+    } 
+    // else {
+    //     if (!b_first_frame_) { if (!gravity_align_) gravity_align_ = true; }
+    //     else {
+    //         b_first_frame_ = false;
+    //         return;
+    //     }
+    //     *cur_pcl_un_ = *(meas.lidar);
+    //     return;
+    // }
         else {
-            b_first_frame_ = false;
-            return;
-        }
         *cur_pcl_un_ = *(meas.lidar);
         return;
     }
