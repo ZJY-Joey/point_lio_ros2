@@ -29,6 +29,7 @@ def generate_launch_description():
             'filter_size_map': 0.5,  # Options: 0.5, 0.3, 0.15, 0.1
             'cube_side_length': 1000.0,  # Option: 1000
             'runtime_pos_log_enable': False,  # Option: True
+            'ivox_nearby_type': 6,
         }
     ]
 
@@ -49,7 +50,7 @@ def generate_launch_description():
         name='rviz',
         arguments=['-d', PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'rviz_cfg', 'loam_livox.rviz'
+            'rviz_cfg', 'loam_livox_b2.rviz'
         ])],
         condition=IfCondition(LaunchConfiguration('rviz')),
         prefix='nice'

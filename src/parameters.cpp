@@ -21,7 +21,7 @@ double filter_size_surf_min, filter_size_map_min, fov_deg;
 double cube_len;
 float DET_RANGE;
 bool imu_en, gravity_align, non_station_start;
-double imu_time_inte;
+double imu_time_inte, first_imu_time;
 double laser_point_cov, acc_norm;
 double vel_cov, acc_cov_input, gyr_cov_input;
 double gyr_cov_output, acc_cov_output, b_gyr_cov, b_acc_cov;
@@ -71,6 +71,7 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->declare_parameter<bool>("mapping.start_in_aggressive_motion", false);
     nh->declare_parameter<bool>("mapping.extrinsic_est_en", true);
     nh->declare_parameter<double>("mapping.imu_time_inte", 0.005);
+    nh->declare_parameter<double>("mapping.first_imu_time", 0.0);
     nh->declare_parameter<double>("mapping.lidar_meas_cov", 0.1);
     nh->declare_parameter<double>("mapping.acc_cov_input", 0.1);
     nh->declare_parameter<double>("mapping.vel_cov", 20);
@@ -137,6 +138,7 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->get_parameter("mapping.start_in_aggressive_motion", non_station_start);
     nh->get_parameter("mapping.extrinsic_est_en", extrinsic_est_en);
     nh->get_parameter("mapping.imu_time_inte", imu_time_inte);
+    nh->get_parameter("mapping.first_imu_time", first_imu_time);
     nh->get_parameter("mapping.lidar_meas_cov", laser_point_cov);
     nh->get_parameter("mapping.acc_cov_input", acc_cov_input);
     nh->get_parameter("mapping.vel_cov", vel_cov);

@@ -33,7 +33,7 @@ def generate_launch_description():
             # localization parameters
             'location_mode': True,
             'initial_z': 0.0,
-            'map_path': '/home/zjy/code/atecup/point_lio_ros2/b2_ros2_humble/maps/4.pcd',
+            'map_path': '/home/zjy/code/atecup/lio_elevation_ros2/src/point_lio_ros2/b2_ros2_humble/maps/4.pcd',
             'publish/scan_bodyframe_pub_en': True,
             'pcd_save/pcd_save_en': False,
         }
@@ -62,10 +62,26 @@ def generate_launch_description():
         prefix='nice'
     )
 
+
+    tf_node = Node(
+        package='message_to_tf',
+        executable='message_to_tf_node',
+        name='message_to_tf',
+        output='screen',
+        parameters=[{
+            'odometry_topic': '/aft_mapped_to_init',  # Change to True to use IMU as input of Point-LIO
+            'frame_id': '/camera_init',
+            'footprint_frame_id': '/aft_mapped_footprint',
+            'stabilized_frame_id': '/aft_mapped_stabilized',
+            'child_frame_id': '/aft_mapped'
+        }]
+    )
+
     # Assemble the launch description
     ld = LaunchDescription([
         rviz_arg,
         laser_mapping_node,
+        tf_node,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))
