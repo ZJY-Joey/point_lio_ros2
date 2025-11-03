@@ -1023,6 +1023,31 @@ int main(int argc, char **argv) {
     //        ("/planner_normal", 1000);
     //TODO: tf tree should be checked
     auto tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(nh);
+
+
+    // create shared buffer and listener (listener stores a reference to the buffer)
+    // tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
+    // tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
+    
+
+    ///  读取地图点云并发布
+    if (location_mode) {
+        RCLCPP_INFO(logger, "Loading global map...");
+        pcl::io::loadPCDFile(map_path, *map_cloud);
+        RCLCPP_INFO(logger, "Load map cloud with size: %zu.", map_cloud->points.size());
+
+        pcl::VoxelGrid<PointType> sor;
+        sor.setInputCloud(map_cloud);
+        sor.setLeafSize(0.1, 0.1, 0.4);
+        sor.filter(*map_cloud);
+
+        sensor_msgs::msg::PointCloud2 laserCloudmsg;
+        pcl::toROSMsg(*map_cloud, laserCloudmsg);
+        laserCloudmsg.header.stamp = rclcpp::Clock().now();
+        laserCloudmsg.header.frame_id = "camera_init";
+        pubLaserCloudMap->publish(laserCloudmsg);
+    }
+
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     rclcpp::Rate rate(5000);
@@ -1034,6 +1059,26 @@ int main(int argc, char **argv) {
         executor.spin_some(); // 处理当前可用的回调
 
         if (sync_packages(Measures)) {
+            //location mode to initial pose
+            if (location_mode && !flg_location_inited) {
+                PointCloudXYZI::Ptr init_world(new PointCloudXYZI());
+                init_world->resize(Measures.lidar->points.size());
+                for (int i = 0; i < Measures.lidar->points.size(); i++) {
+                pointBodyToWorld(&(Measures.lidar->points[i]),
+                                &(init_world->points[i]));
+                }
+
+                if (init_total_world->points.size() > 10000) {
+                initial_pose();
+                if (!flg_location_inited) {
+                    continue;
+                }
+                } else {
+                *init_total_world += *init_world;
+                continue;
+                }
+            }
+
             if (flg_first_scan) {
                 first_lidar_time = Measures.lidar_beg_time;
                 flg_first_scan = false;
@@ -1114,7 +1159,11 @@ int main(int argc, char **argv) {
 
             /*** initialize the map kdtree ***/
             if (!init_map) {
-                if (ikdtree.Root_Node == nullptr) //
+                if (location_mode) {
+                    init_feats_world->reserve(map_cloud->size());
+                    *init_feats_world = *map_cloud;
+                }
+                else if (ikdtree.Root_Node == nullptr) //
                     // if(feats_down_size > 5)
                 {
                     ikdtree.set_downsample_param(filter_size_map_min);
@@ -1464,7 +1513,7 @@ int main(int argc, char **argv) {
             /*** add the feature points to map kdtree ***/
             t3 = omp_get_wtime();
 
-            if (feats_down_size > 4) {
+            if (!location_mode && feats_down_size > 4) {
                 map_incremental();
             }
 
