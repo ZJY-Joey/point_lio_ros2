@@ -22,7 +22,7 @@ state_output state_out;
 input_ikfom input_in;
 V3D angvel_avr, acc_avr;
 
-double G_m_s2 = 9.81;
+// double G_m_s2 = 9.81;
 
 V3D Lidar_T_wrt_IMU(Zero3d);
 M3D Lidar_R_wrt_IMU(Eye3d);

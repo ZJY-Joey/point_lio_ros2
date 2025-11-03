@@ -31,7 +31,7 @@ std::vector<double> gravity_init, gravity;
 std::vector<double> extrinT;
 std::vector<double> extrinR;
 bool runtime_pos_log, pcd_save_en, path_en, extrinsic_est_en = true;
-bool scan_pub_en, scan_bodyframe_pub_en;
+bool scan_pub_en, scan_body_pub_en;
 shared_ptr<Preprocess> p_pre;
 double time_lag_imu_to_lidar = 0.0;
 bool location_mode = false;
@@ -163,7 +163,7 @@ void readParameters(shared_ptr<rclcpp::Node> &nh) {
     nh->get_parameter("odometry.publish_odometry_without_downsample", publish_odometry_without_downsample);
     nh->get_parameter("publish.path_en", path_en);
     nh->get_parameter("publish.scan_publish_en", scan_pub_en);
-    nh->get_parameter("publish.scan_bodyframe_pub_en", scan_bodyframe_pub_en);
+    nh->get_parameter("publish.scan_bodyframe_pub_en", scan_body_pub_en);
     nh->get_parameter("runtime_pos_log_enable", runtime_pos_log);
     nh->get_parameter("pcd_save.pcd_save_en", pcd_save_en);
     nh->get_parameter("pcd_save.interval", pcd_save_interval);

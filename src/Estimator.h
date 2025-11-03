@@ -86,7 +86,7 @@ extern esekfom::esekf<state_output, 30, input_ikfom> kf_output;
 extern state_input state_in;
 extern state_output state_out;
 extern input_ikfom input_in;
-extern double G_m_s2;
+// extern double G_m_s2;
 
 Eigen::Matrix<double, 24, 24> process_noise_cov_input();
 
