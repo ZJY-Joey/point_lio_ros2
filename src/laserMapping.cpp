@@ -270,6 +270,7 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
             time_buffer.push_back(time_div);
         }
     } else if (con_frame) {
+        // std::cout << "scan_count: " << scan_count << std::endl;
         if (frame_ct == 0) {
             time_con = last_timestamp_lidar; //get_time_sec(msg->header.stamp);
         }
@@ -279,7 +280,7 @@ void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
                 ptr_con->push_back(ptr->points[i]);
             }
             frame_ct++;
-        } else {
+        } else if (frame_ct >= con_frame_num || scan_count > 200) {
             PointCloudXYZI::Ptr ptr_con_i(new PointCloudXYZI());
             *ptr_con_i = *ptr_con;
             lidar_buffer.push_back(ptr_con_i);
@@ -348,7 +349,8 @@ void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::SharedPtr msg) {
                 ptr_con->push_back(ptr->points[i]);
             }
             frame_ct++;
-        } else {
+        }
+        if(frame_ct >= con_frame_num || scan_count > 200) {
             PointCloudXYZI::Ptr ptr_con_i(new PointCloudXYZI());
             *ptr_con_i = *ptr_con;
             double time_con_i = time_con;
@@ -636,7 +638,6 @@ void initial_pose() {
     // cloud_msg.header.stamp = get_ros_time(lidar_end_time);
     // cloud_msg.header.frame_id = "camera_init";
     // pubInitialCloud->publish(cloud_msg);
-    //因为publisher其实是空的
     RCLCPP_INFO(logger, "cloud_aligned size: %zu", cloud_aligned->points.size());
     if (!std::isfinite(lidar_end_time)) {
         RCLCPP_ERROR(logger, "lidar_end_time is not finite: %f", lidar_end_time);
@@ -1014,18 +1015,17 @@ int main(int argc, char **argv) {
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr plane_pub;
 
 
-    //TODO: changed the name of topic 
     if (!odom_only){
         pubLaserCloudFullRes = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_registered", 100000);
+                ("/cloud_registered", 10);
         pubLaserCloudFullRes_body = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_registered_body", 100000);
+                ("/cloud_registered_body", 10);
         pubLaserCloudEffect = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_effected", 100000);
+                ("/cloud_effected", 1000);
         pubLaserCloudMap = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/global_map", 100000);  //changed from laser_map 2 global_map
+                ("/global_map", 1000);  //changed from laser_map 2 global_map
         pubPath = nh->create_publisher<nav_msgs::msg::Path>
-                ("/path", 100000);
+                ("/path", 1000);
         plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>("/planner_normal", 1000);
     }
 
@@ -1036,7 +1036,7 @@ int main(int argc, char **argv) {
                 ("/odom_corrected", 100000);
     } else {
         pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
-                ("/aft_mapped_to_init", 100000);
+                ("/aft_mapped_to_init", 1000);
     }
     pubInitialCloud = nh->create_publisher<sensor_msgs::msg::PointCloud2>
                 ("/cloud_initial", 10);
@@ -1163,6 +1163,35 @@ int main(int argc, char **argv) {
                     state_out.gravity << VEC_FROM_ARRAY(gravity_init);
                     state_out.acc << VEC_FROM_ARRAY(gravity_init);
                     state_out.acc *= -1;
+                }
+            }
+            /*** IMU initialization ***/
+            if (!p_imu->after_imu_init_) {
+                if (!p_imu->imu_need_init_) {
+                M3D rot_init;
+                p_imu->after_imu_init_ = true;
+
+                if (location_mode) {
+                //     kf_input.x_.rot = rot_init;
+                //     kf_output.x_.rot = rot_init;
+                // } else {
+                    if (flg_location_inited) {
+                    rot_init =initial_orientation.toRotationMatrix();
+                    kf_input.x_.rot = rot_init;
+                    kf_output.x_.rot = rot_init;
+                    kf_input.x_.pos = initial_position;
+                    kf_output.x_.pos = initial_position;
+                    // std::cout << "Initial pose set from initialpose topic." << std::endl;
+                    } else {
+                    AWARN_F("Wating for initial pose!");
+                    continue;
+                    }
+                }
+                // kf_input.x_.rot; //.normalize();
+                // kf_output.x_.rot; //.normalize();
+                kf_output.x_.acc = -rot_init.transpose() * kf_output.x_.gravity;
+                } else {
+                continue;
                 }
             }
             /*** Segment the map in lidar FOV ***/
