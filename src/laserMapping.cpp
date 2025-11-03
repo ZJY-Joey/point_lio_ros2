@@ -593,6 +593,9 @@ void initial_pose() {
     downSizeFilterSurf.setInputCloud(init_total_world);
     downSizeFilterSurf.filter(*source_cloud_ds);
 
+    RCLCPP_INFO(logger, "initial_pose: init_total_world size=%zu, source_cloud_ds size=%zu, map_cloud size=%zu",
+                init_total_world->points.size(), source_cloud_ds->points.size(), map_cloud->points.size());
+
     // from coarse(ndt) to fine(icp)
     pcl::NormalDistributionsTransform<PointType, PointType> ndt;
     ndt.setTransformationEpsilon(1e-4);
@@ -637,9 +640,6 @@ void initial_pose() {
     RCLCPP_INFO(logger, "cloud_aligned size: %zu", cloud_aligned->points.size());
     if (!std::isfinite(lidar_end_time)) {
         RCLCPP_ERROR(logger, "lidar_end_time is not finite: %f", lidar_end_time);
-    }
-    if (!pubInitialCloud) {
-        RCLCPP_ERROR(logger, "pubInitialCloud is null!");
     }
 
     // safe stamp assignment
@@ -1011,9 +1011,6 @@ int main(int argc, char **argv) {
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudEffect;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
-    // rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
-    // rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubInitialCloud;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr plane_pub;
 
 
@@ -1109,6 +1106,7 @@ int main(int argc, char **argv) {
                 flg_first_scan = false;
                 cout << "first lidar time" << first_lidar_time << endl;
             }
+
 
             if (flg_reset) {
                 RCLCPP_WARN(logger, "reset when rosbag play back");
