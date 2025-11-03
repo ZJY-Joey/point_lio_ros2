@@ -1,6 +1,6 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 0
+    Help Height: 78
     Name: Displays
     Property Tree Widget:
       Expanded:
@@ -14,7 +14,7 @@ Panels:
         - / GlobalMap1
         - / GlobalMap1/Autocompute Value Bounds1
         - /MarkerArray1/Namespaces1
-      Splitter Ratio: 0.6487026214599609
+      Splitter Ratio: 0.5
     Tree Height: 691
   - Class: rviz_common/Selection
     Name: Selection
@@ -23,13 +23,14 @@ Panels:
       - /2D Pose Estimate1
       - /2D Nav Goal1
     Name: Tool Properties
-    Splitter Ratio: 0.5886790156364441
+    Splitter Ratio: 0.5
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
     Name: Views
     Splitter Ratio: 0.5
   - Class: rviz_common/Time
+    Experimental: false
     Name: Time
     SyncMode: 0
     SyncSource: " GlobalMap"

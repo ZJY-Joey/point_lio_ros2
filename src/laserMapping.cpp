@@ -1023,7 +1023,7 @@ int main(int argc, char **argv) {
         pubLaserCloudEffect = nh->create_publisher<sensor_msgs::msg::PointCloud2>
                 ("/cloud_effected", 100000);
         pubLaserCloudMap = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/Laser_map", 100000);  //changed from laser_map 2 global_map
+                ("/global_map", 100000);  //changed from laser_map 2 global_map
         pubPath = nh->create_publisher<nav_msgs::msg::Path>
                 ("/path", 100000);
         plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>("/planner_normal", 1000);
