@@ -630,12 +630,37 @@ void initial_pose() {
                             cloud_aligned_pose);
     sensor_msgs::msg::PointCloud2 cloud_msg;
     pcl::toROSMsg(*cloud_aligned, cloud_msg);
-    cloud_msg.header.stamp = get_ros_time(lidar_end_time);
+    // cloud_msg.header.stamp = get_ros_time(lidar_end_time);
+    // cloud_msg.header.frame_id = "camera_init";
+    // pubInitialCloud->publish(cloud_msg);
+    //因为publisher其实是空的
+    RCLCPP_INFO(logger, "cloud_aligned size: %zu", cloud_aligned->points.size());
+    if (!std::isfinite(lidar_end_time)) {
+        RCLCPP_ERROR(logger, "lidar_end_time is not finite: %f", lidar_end_time);
+    }
+    if (!pubInitialCloud) {
+        RCLCPP_ERROR(logger, "pubInitialCloud is null!");
+    }
+
+    // safe stamp assignment
+    try {
+        cloud_msg.header.stamp = get_ros_time(lidar_end_time);
+    } catch (...) {
+        RCLCPP_ERROR(logger, "get_ros_time threw exception, using now()");
+        cloud_msg.header.stamp = rclcpp::Clock().now();
+    }
     cloud_msg.header.frame_id = "camera_init";
-    pubInitialCloud->publish(cloud_msg);
+
+    if (pubInitialCloud) {
+        pubInitialCloud->publish(cloud_msg);
+        RCLCPP_INFO(logger, "published initial cloud");
+    } else {
+        RCLCPP_ERROR(logger, "skip publishInitialCloud because publisher is null");
+    }
 
     double score = icp.getFitnessScore();
     if (icp.hasConverged() == false || score == 0.0 || score > 0.5) {
+
         RCLCPP_ERROR(logger, "Global Initializing Fail with %f!", score);
         flg_location_inited = false;
         if (flg_get_init_guess) {
