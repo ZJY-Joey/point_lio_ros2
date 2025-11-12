@@ -33,7 +33,7 @@ def generate_launch_description():
             # localization parameters
             'location_mode': True,
             'initial_z': 0.0,
-            'map_path': '/home/zjy/code/atecup/lio_elevation_ros2/src/point_lio_ros2/b2_ros2_humble/maps/4.pcd',
+            'map_path': 'src/point_lio_ros2/PCD/4.pcd',
             'publish/scan_bodyframe_pub_en': True,
             'pcd_save/pcd_save_en': False,
         }
