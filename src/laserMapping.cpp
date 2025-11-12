@@ -1072,6 +1072,7 @@ int main(int argc, char **argv) {
 
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
+    double last_publish_global_map_time = omp_get_wtime();
     rclcpp::Rate rate(5000);
     while (rclcpp::ok()) {
         if (flg_exit) break;
@@ -1079,6 +1080,16 @@ int main(int argc, char **argv) {
         rclcpp::executors::SingleThreadedExecutor executor;
         executor.add_node(nh);
         executor.spin_some(); // 处理当前可用的回调
+        if (location_mode && !flg_get_init_guess) {
+            if (omp_get_wtime() - last_publish_global_map_time > 1.0) {
+                sensor_msgs::msg::PointCloud2 laserCloudmsg;
+                pcl::toROSMsg(*map_cloud, laserCloudmsg);
+                laserCloudmsg.header.stamp = rclcpp::Clock().now();
+                laserCloudmsg.header.frame_id = "camera_init";
+                pubLaserCloudMap->publish(laserCloudmsg);
+                last_publish_global_map_time = omp_get_wtime();
+            }
+        }
 
         if (sync_packages(Measures)) {
             //location mode to initial pose
