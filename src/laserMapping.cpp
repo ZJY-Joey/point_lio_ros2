@@ -1023,7 +1023,11 @@ void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPa
     static int jjj = 0;
     jjj++;
     // if (jjj % 2 == 0) // if path is too large, the rvis will crash
-    {
+    if(path.poses.size() > 1000) {
+        path.poses.erase(path.poses.begin());
+        path.poses.emplace_back(msg_body_pose);
+        pubPath->publish(path);
+    } else{
         path.poses.emplace_back(msg_body_pose);
         pubPath->publish(path);
     }

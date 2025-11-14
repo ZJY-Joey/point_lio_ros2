@@ -56,10 +56,34 @@ def generate_launch_description():
         prefix='nice'
     )
 
+
+    static_tf_base2chassie = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="tf_base2chassie",
+        arguments=["0.3410", "0.", "0.1779", "1.5708", "0.", "0.1745", "aliengo", "livox_frame"],
+    )   
+    static_tf_pose2base = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="tf_pose2base",
+        arguments=["0.", "0.023", "-0.049", "0.", "0.", "0.", "aft_mapped", "aliengo"],
+    )   
+
+    static_tf_world2camera = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="tf_pose2base",
+        arguments=["0.0", "0.0", "0.0", "0.", "0.", "0.", "world", "camera_init"],
+    )   
+
     # Assemble the launch description
     ld = LaunchDescription([
         rviz_arg,
         laser_mapping_node,
+        static_tf_base2chassie,
+        static_tf_pose2base,
+        static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))
