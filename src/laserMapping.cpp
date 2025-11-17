@@ -62,6 +62,10 @@ geometry_msgs::msg::TransformStamped tf_world2odom, tf_aft2base;
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
 /// @brief 基座位姿发布器
 rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
+/// @brief 基座里程计发布器
+rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
+/// @brief 基座位姿发布器
+rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
 
 const float MOV_THRESHOLD = 1.5f;
 
@@ -1022,7 +1026,11 @@ void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPa
     static int jjj = 0;
     jjj++;
     // if (jjj % 2 == 0) // if path is too large, the rvis will crash
-    {
+    if(path.poses.size() > 1000) {
+        path.poses.erase(path.poses.begin());
+        path.poses.emplace_back(msg_body_pose);
+        pubPath->publish(path);
+    } else{
         path.poses.emplace_back(msg_body_pose);
         pubPath->publish(path);
     }
@@ -1157,6 +1165,8 @@ int main(int argc, char **argv) {
     // create shared buffer and listener (listener stores a reference to the buffer)
     tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
+    tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
+    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
     
 
     ///  读取地图点云并发布
@@ -1180,6 +1190,7 @@ int main(int argc, char **argv) {
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     double last_publish_global_map_time = omp_get_wtime();
+    double last_publish_global_map_time = omp_get_wtime();
     rclcpp::Rate rate(5000);
     while (rclcpp::ok()) {
         if (flg_exit) break;
@@ -1187,6 +1198,16 @@ int main(int argc, char **argv) {
         rclcpp::executors::SingleThreadedExecutor executor;
         executor.add_node(nh);
         executor.spin_some(); // 处理当前可用的回调
+        if (location_mode && !flg_get_init_guess) {
+            if (omp_get_wtime() - last_publish_global_map_time > 1.0) {
+                sensor_msgs::msg::PointCloud2 laserCloudmsg;
+                pcl::toROSMsg(*map_cloud, laserCloudmsg);
+                laserCloudmsg.header.stamp = rclcpp::Clock().now();
+                laserCloudmsg.header.frame_id = "camera_init";
+                pubLaserCloudMap->publish(laserCloudmsg);
+                last_publish_global_map_time = omp_get_wtime();
+            }
+        }
         if (location_mode && !flg_get_init_guess) {
             if (omp_get_wtime() - last_publish_global_map_time > 1.0) {
                 sensor_msgs::msg::PointCloud2 laserCloudmsg;

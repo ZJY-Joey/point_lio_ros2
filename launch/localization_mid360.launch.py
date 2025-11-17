@@ -132,6 +132,7 @@ def generate_launch_description():
         static_tf_base2chassie,
         static_tf_pose2base,
         static_tf_world2camera,
+        static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))
