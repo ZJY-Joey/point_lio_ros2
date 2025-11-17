@@ -16,7 +16,7 @@ def generate_launch_description():
     laser_mapping_params = [
         PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'config', 'mid360_b2.yaml'
+            'config', 'mid360.yaml'
         ]),
         {
             'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO

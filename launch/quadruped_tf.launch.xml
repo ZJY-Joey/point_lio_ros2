@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+    <arg name="robot" default="hand" description="Robot type (hand, aliengo, go2, x20, b2, g1)"/>
+    <arg name="use_sim_time" default="false" description="Use simulation (Gazebo) clock if true"/>
+
+    <set_parameter name="use_sim_time" value="$(var use_sim_time)"/>
+
+    <group if="$(eval &quot; '$(var robot)' == 'hand' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2lidar" args="0. 0. 0. 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="-0.011 -0.02329 0.04412 0. 0. 0. aft_mapped base"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2lidar" args="0. 0. 0. 0. 0. 0. base livox_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_liodummy" args="0.011 0.02329 -0.04412 0. 0. 0. livox_frame body"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_lidar2azure" args="0.0469 0.0 -0.0637 0. 0. 0. livox_frame camear_base"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_azure2depth" args="0. 0. 0. -1.571 0. -1.676 camear_base depth_camera_link"/>
+    </group>
+
+    <group if="$(eval &quot; '$(var robot)' == 'aliengo' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 0.140 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0. 0. -0.035 0. 0. 0. aft_mapped aliengo"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2imu" args="0. 0. 0.035 0. 0. 0. aliengo imu"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. imu body"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2camera" args="0.34472 0. 0.10 0. 0. 0. base d435i_link"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0.35472 0. 0. 0. 0. 0. aliengo livox_chassie"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_up" args="0.02624 0. 0.05076 1.571 0. 1.0821 livox_chassie livox_up"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_down" args="0.01190 0. -0.05894 1.571 0. 2.2689 livox_chassie livox_down"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_quad2base" args="0. 0. 0. 0. 0. 0. aliengo base"/>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="aliengo_state_publisher" launch-prefix="taskset -c 2-7 nice -n -10" output="screen">
+            <param name="robot_description" value="$(command 'xacro $(find-pkg-share aliengo_description)/xacro/robot.xacro DEBUG:=false')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/aliengo/joint_states" />
+        </node>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="z1_state_publisher" launch-prefix="taskset -c 2-7 nice -n -10" output="screen">
+            <param name="robot_description" value="$(command 'xacro $(find-pkg-share z1_description)/xacro/robot.xacro UnitreeGripper:=false')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/z1/joint_states" />
+        </node>
+    </group>
+
+    <group if="$(eval &quot; '$(var robot)' == 'go2' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 0.120 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0.026 0.000 -0.042 0. 0. 0. aft_mapped aliengo"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2imu" args="-0.026 0.000 0.042 0. 0. 0. aliengo imu_link"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. imu_link body"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_up" args="0.03305 0. 0.04661 1.571 0. 1.2217 livox_chassie livox_up"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_down" args="0.01025 0. -0.05714 1.571 0. 2.3562 livox_chassie livox_down"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_quad2base" args="0. 0. 0. 0. 0. 0. aliengo base"/>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="go2_state_publisher" output="screen">
+            <param name="robot_description" value="$(command 'xacro $(find-pkg-share go2_description)/urdf/go2_description.urdf')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/go2/joint_states" />
+        </node>
+    </group>
+
+    <group if="$(eval &quot; '$(var robot)' == 'x20' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 0.120 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0. 0. 0. 0. 0. 0. aft_mapped aliengo"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. aliengo body"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0. 0. 0. 0. 0. 0. aliengo livox_chassie"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_up" args="0.458 0. 0.048 1.5708 0. 1.4835 livox_chassie livox_up"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_down" args="0.426 0. -0.058 1.5708 0. 2.3736 livox_chassie livox_down"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_up2" args="-0.481 0. 0.035 -1.5708 0. 1.4835 livox_chassie livox_up2"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox_down2" args="-0.423 0. -0.059 -1.5708 0. 2.3736 livox_chassie livox_down2"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_quad2base" args="0. 0. 0. 0. 0. 0. aliengo base"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2trunk" args="0. 0. 0. 0. 0. 0. base TORSO"/>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="x20_state_publisher" output="screen">
+            <param name="robot_description" value="$(command 'cat $(find-pkg-share jueyingx20_description)/urdf/JueyingX20V2.urdf')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/x20/joint_states" />
+        </node>
+    </group>
+
+    <group if="$(eval &quot; '$(var robot)' == 'b2' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 0.220 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0. 0.023 -0.049 0. 0. 0. aft_mapped aliengo"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. aft_mapped body"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0.3410 0. 0.1779 1.5708 0. 0.1745 aliengo livox_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_livox2imu" args="0.011 0.02329 -0.04412 0. 0. 0. livox_frame livox_imu"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2camf" args="0. 0. 0. 0. 0. 0. f_dc_link rs_front_depth_optical_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2camr" args="0. 0. 0. 0. 0. 0. r_dc_link rs_rear_depth_optical_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_quad2base" args="0. 0. 0. 0. 0. 0. aliengo base_link"/>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="b2_state_publisher" output="screen">
+            <param name="robot_description" value="$(command 'cat $(find-pkg-share b2_description)/urdf/b2_description.urdf')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/b2/joint_states" />
+        </node>
+    </group>
+
+    <group if="$(eval &quot; '$(var robot)' == 'g1' &quot;)">
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 1.0 0. 0. 0. world camera_init"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0. 0. 0. 0. 0. 0. aft_mapped base"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0.040 0.002 0.268 0.000 0.040 3.141 base livox_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. base body"/>
+
+        <node pkg="robot_state_publisher" exec="robot_state_publisher" name="g1_state_publisher" output="screen">
+            <param name="robot_description" value="$(command 'xacro $(find-pkg-share g1_description)/urdf/g1_29dof.urdf')"/>
+            <param name="publish_frequency" value="1000.0"/>
+            <remap from="joint_states" to="/g1/joint_states" />
+        </node>
+
+        <node pkg="pub_g1_states" exec="state_pub" name="pub_g1_states" namespace="g1" output="screen">
+            <remap from="joint_state_topic" to="joint_states"/>
+        </node>
+    </group>
+
+</launch>

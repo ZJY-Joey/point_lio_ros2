@@ -1,9 +1,11 @@
 from launch import LaunchDescription
-from launch.actions import GroupAction, DeclareLaunchArgument
+from launch.actions import GroupAction, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
@@ -11,12 +13,19 @@ def generate_launch_description():
     rviz_arg = DeclareLaunchArgument(
         'rviz', default_value='true',
         description='Flag to launch RViz.')
+    sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time', default_value='true',
+        description='Use simulation time'
+    )
+    robot_arg = DeclareLaunchArgument(
+        'robot', default_value=''
+    )
 
     # Node parameters, including those from the YAML configuration file
     laser_mapping_params = [
         PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'config', 'mid360_b2.yaml'
+            'config', 'mid360.yaml'
         ]),
         {
             'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
@@ -31,9 +40,9 @@ def generate_launch_description():
             'cube_side_length': 1000.0,  # Option: 1000
             'runtime_pos_log_enable': False,  # Option: True
             # localization parameters
-            'location_mode': True,
+            'location_mode': False,
             'initial_z': 0.0,
-            'map_path': '/home/zjy/code/atecup/lio_elevation_ros2/src/point_lio_ros2/b2_ros2_humble/maps/4.pcd',
+            'map_path': '/home/jetson/atec/lio_elevation_ws/maps/0405_csc1floor.pcd',
             'publish/scan_bodyframe_pub_en': True,
             'pcd_save/pcd_save_en': False,
         }
@@ -77,26 +86,52 @@ def generate_launch_description():
         }]
     )
 
+    pkg_share_dir = get_package_share_directory('point_lio')
+    xml_launch_file_path = PathJoinSubstitution([
+        pkg_share_dir,
+        'launch',
+        'quadruped_tf.launch.xml']
+    )
+    include_xml_launch = IncludeLaunchDescription(
+        XMLLaunchDescriptionSource(xml_launch_file_path),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'robot': LaunchConfiguration('robot'),
+        }.items()
+    )
+
+    static_tf_world2camera = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="tf_pose2base",
+        arguments=["0.0", "0.0", "0.0", "0.", "0.", "0.", "world", "camera_init"],
+    )
     static_tf_base2chassie = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="tf_base2chassie",
-        arguments=["0.3410", "0.", "0.1779", "1.5708", "0.", "0.1745", "aliengo", "livox_frame"],
+        # arguments=["0.3410", "0.", "0.1779", "1.5708", "0.", "0.1745", "aliengo", "livox_frame"],  # unitree b2 lidar
+        arguments=["0.", "0.", "0.04412", "1.5708", "0.", "0.1745", "aliengo", "livox_frame"],
     )   
     static_tf_pose2base = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="tf_pose2base",
-        arguments=["0.", "0.023", "-0.049", "0.", "0.", "0.", "aft_mapped", "aliengo"],
+        # arguments=["0.", "0.023", "-0.049", "0.", "0.", "0.", "aft_mapped", "aliengo"],  # unitree b2 imu
+        arguments=["0.011", "0.02329", "0.", "-1.5708", "-0.1745", "0.", "aft_mapped", "aliengo"],
     )   
 
     # Assemble the launch description
     ld = LaunchDescription([
         rviz_arg,
+        sim_time_arg,
+        robot_arg,
         laser_mapping_node,
         tf_node,
+        # include_xml_launch,
         static_tf_base2chassie,
         static_tf_pose2base,
+        static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))

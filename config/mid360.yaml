@@ -3,8 +3,8 @@
         common:
             lid_topic: "/livox/lidar"
             imu_topic: "/livox/imu"
-            con_frame: false # true: if you need to combine several LiDAR frames into one
-            con_frame_num: 1 # the number of frames combined
+            con_frame: true # true: if you need to combine several LiDAR frames into one
+            con_frame_num: 10 # the number of frames combined
             cut_frame: false # true: if you need to cut one LiDAR frame into several subframes
             cut_frame_time_interval: 0.1 # should be integral fraction of 1 / LiDAR frequency
             time_lag_imu_to_lidar: 0.0 # Time offset between LiDAR and IMU calibrated by other algorithms, e.g., LI-Init (find in Readme),
@@ -54,6 +54,6 @@
             scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
 
         pcd_save:
-            pcd_save_en: false
+            pcd_save_en: true
             interval: -1                 # how many LiDAR frames saved in each pcd file;
             # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
