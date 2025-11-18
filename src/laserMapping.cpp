@@ -62,10 +62,6 @@ geometry_msgs::msg::TransformStamped tf_world2odom, tf_aft2base;
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
 /// @brief 基座位姿发布器
 rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
-/// @brief 基座里程计发布器
-rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
-/// @brief 基座位姿发布器
-rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_base_pose;
 
 const float MOV_THRESHOLD = 1.5f;
 

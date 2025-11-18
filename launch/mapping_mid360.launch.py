@@ -1,9 +1,11 @@
 from launch import LaunchDescription
-from launch.actions import GroupAction, DeclareLaunchArgument
+from launch.actions import GroupAction, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
@@ -11,6 +13,13 @@ def generate_launch_description():
     rviz_arg = DeclareLaunchArgument(
         'rviz', default_value='true',
         description='Flag to launch RViz.')
+    sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time', default_value='true',
+        description='Use simulation time'
+    )
+    robot_arg = DeclareLaunchArgument(
+        'robot', default_value=''
+    )
 
     # Node parameters, including those from the YAML configuration file
     laser_mapping_params = [
@@ -19,6 +28,7 @@ def generate_launch_description():
             'config', 'mid360.yaml'
         ]),
         {
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
             'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
             'prop_at_freq_of_imu': True,
             'check_satu': True,
@@ -41,6 +51,21 @@ def generate_launch_description():
         output='screen',
         parameters=laser_mapping_params,
         # prefix='gdb -ex run --args'
+    )
+
+    tf_node = Node(
+        package='message_to_tf',
+        executable='message_to_tf_node',
+        name='message_to_tf',
+        output='screen',
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'odometry_topic': '/aft_mapped_to_init',  # Change to True to use IMU as input of Point-LIO
+            'frame_id': '/camera_init',
+            'footprint_frame_id': '/aft_mapped_footprint',
+            'stabilized_frame_id': '/aft_mapped_stabilized',
+            'child_frame_id': '/aft_mapped'
+        }]
     )
 
     # Conditional RViz node launch
@@ -77,13 +102,32 @@ def generate_launch_description():
         arguments=["0.0", "0.0", "0.0", "0.", "0.", "0.", "world", "camera_init"],
     )   
 
+
+    pkg_share_dir = get_package_share_directory('point_lio')
+    xml_launch_file_path = PathJoinSubstitution([
+        pkg_share_dir,
+        'launch',
+        'quadruped_tf.launch.xml']
+    )
+    include_xml_launch = IncludeLaunchDescription(
+        XMLLaunchDescriptionSource(xml_launch_file_path),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'robot': LaunchConfiguration('robot'),
+        }.items()
+    )
+
     # Assemble the launch description
     ld = LaunchDescription([
         rviz_arg,
+        sim_time_arg,
+        robot_arg,
         laser_mapping_node,
-        static_tf_base2chassie,
-        static_tf_pose2base,
-        static_tf_world2camera,
+        tf_node,
+        include_xml_launch,
+        # static_tf_base2chassie,
+        # static_tf_pose2base,
+        # static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))

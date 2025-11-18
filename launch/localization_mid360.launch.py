@@ -28,7 +28,8 @@ def generate_launch_description():
             'config', 'mid360.yaml'
         ]),
         {
-            'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'use_imu_as_input': True,  # Change to True to use IMU as input of Point-LIO
             'prop_at_freq_of_imu': False,
             'check_satu': True,
             'init_map_size': 10,
@@ -78,6 +79,7 @@ def generate_launch_description():
         name='message_to_tf',
         output='screen',
         parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
             'odometry_topic': '/aft_mapped_to_init',  # Change to True to use IMU as input of Point-LIO
             'frame_id': '/camera_init',
             'footprint_frame_id': '/aft_mapped_footprint',
@@ -103,7 +105,7 @@ def generate_launch_description():
     static_tf_world2camera = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
-        name="tf_pose2base",
+        name="tf_world2camera",
         arguments=["0.0", "0.0", "0.0", "0.", "0.", "0.", "world", "camera_init"],
     )
     static_tf_base2chassie = Node(
@@ -128,11 +130,10 @@ def generate_launch_description():
         robot_arg,
         laser_mapping_node,
         tf_node,
-        # include_xml_launch,
-        static_tf_base2chassie,
-        static_tf_pose2base,
-        static_tf_world2camera,
-        static_tf_world2camera,
+        include_xml_launch,
+        # static_tf_base2chassie,
+        # static_tf_pose2base,
+        # static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))
