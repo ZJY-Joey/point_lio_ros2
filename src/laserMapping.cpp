@@ -1186,7 +1186,6 @@ int main(int argc, char **argv) {
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
     double last_publish_global_map_time = omp_get_wtime();
-    double last_publish_global_map_time = omp_get_wtime();
     rclcpp::Rate rate(5000);
     while (rclcpp::ok()) {
         if (flg_exit) break;
