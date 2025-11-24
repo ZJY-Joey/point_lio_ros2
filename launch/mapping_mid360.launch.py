@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import GroupAction, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
@@ -11,7 +11,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     # Declare the RViz argument
     rviz_arg = DeclareLaunchArgument(
-        'rviz', default_value='true',
+        'rviz', default_value='false',
         description='Flag to launch RViz.')
     sim_time_arg = DeclareLaunchArgument(
         'use_sim_time', default_value='true',
@@ -25,7 +25,8 @@ def generate_launch_description():
     laser_mapping_params = [
         PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'config', 'mid360.yaml'
+            'config',
+            PythonExpression([ "'mid360_' + '", LaunchConfiguration('robot'), "' + '.yaml'" ])
         ]),
         {
             'use_sim_time': LaunchConfiguration('use_sim_time'),
@@ -125,9 +126,6 @@ def generate_launch_description():
         laser_mapping_node,
         tf_node,
         include_xml_launch,
-        # static_tf_base2chassie,
-        # static_tf_pose2base,
-        # static_tf_world2camera,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))

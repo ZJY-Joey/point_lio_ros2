@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import GroupAction, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
@@ -25,7 +25,8 @@ def generate_launch_description():
     laser_mapping_params = [
         PathJoinSubstitution([
             FindPackageShare('point_lio'),
-            'config', 'mid360.yaml'
+            'config',
+            PythonExpression([ "'mid360_' + '", LaunchConfiguration('robot'), "' + '.yaml'" ])
         ]),
         {
             'use_sim_time': LaunchConfiguration('use_sim_time'),
@@ -41,9 +42,9 @@ def generate_launch_description():
             'cube_side_length': 1000.0,  # Option: 1000
             'runtime_pos_log_enable': False,  # Option: True
             # localization parameters
-            'location_mode': False,
+            'location_mode':True,
             'initial_z': 0.0,
-            'map_path': '/home/jetson/atec/lio_elevation_ws/maps/0405_csc1floor.pcd',
+            'map_path': '/home/unitree/atecup_ws/maps/0405_csc1floor.pcd',
             'publish/scan_bodyframe_pub_en': True,
             'pcd_save/pcd_save_en': False,
         }

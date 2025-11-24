@@ -3,9 +3,9 @@
         common:
         #    lid_topic:  "/livox/lidar_up"
         #    imu_topic:  "/livox/imu_up"
-            lid_topic:  "/livox/lidar_down"
+            lid_topic:  "/livox/lidar"
             # imu_topic:  "/livox/imu_down"
-            imu_topic:  "/b2/imu"
+            imu_topic:  "/b2_state/imu"
             con_frame: true # true: if you need to combine several LiDAR frames into one
             con_frame_num: 10 # the number of frames combined
             cut_frame: false # true: if you need to cut one LiDAR frame into several subframes
@@ -47,7 +47,7 @@
             # extrinsic_R: [ 1, 0, 0,
             #                0, 1, 0,
             #                0, 0, 1 ]
-            extrinsic_T: [ 0.341, 0.023, 0.129 ]
+            extrinsic_T: [ 0.301, 0.023, 0.139 ]
             extrinsic_R: [ 0.0000000, -0.9848077,  0.1736482,
                         1.0000000,  0.0000000, -0.0000000,
                         0.0000000,  0.1736482,  0.9848077 ]
