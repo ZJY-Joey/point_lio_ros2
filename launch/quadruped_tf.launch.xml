@@ -85,11 +85,12 @@
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_world2odom" args="0. 0. 0.220 0. 0. 0. world camera_init"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_pose2base" args="0. 0.023 -0.049 0. 0. 0. aft_mapped aliengo"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_imu2body" args="0. 0. 0. 0. 0. 0. aft_mapped body"/>
-        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0.3258 0. 0.1200 0. 0. 0. aliengo livox_chassie"/>
-        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox" args="-0.0253 0. 0.068 1.5708 0. 0.1745 livox_chassie livox_frame"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2chassie" args="0.3258 0. 0.1220 0. 0. 0. aliengo livox_chassie"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2livox" args="-0.0253 0. 0.078 1.5708 0. 0.1745 livox_chassie livox_frame"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_livox2imu" args="0.011 0.02329 -0.04412 0. 0. 0. livox_frame livox_imu"/>
-        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2zed" args="0.0638 0.0 0.005 0. 0.1745 0. livox_chassie zed_camera_link"/>
-        
+        <!-- <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2zed" args="0.0638 0.0 0.005 0. 0.1745 0. livox_chassie zed_camera_link"/> -->
+	    <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_chassie2d455" args="0.03488 0.0 0.03853 0.01 0.185 0.0 livox_chassie rs_d455_center"/>
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_d455center2link" args="0.02145 0.04750 0.0 0. 0.0 0. rs_d455_center rs_d455_link"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2camf" args="0. 0. 0. 0. 0. 0. f_dc_link rs_front_depth_optical_frame"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_base2camr" args="0. 0. 0. 0. 0. 0. r_dc_link rs_rear_depth_optical_frame"/>
         <node pkg="tf2_ros" exec="static_transform_publisher" name="tf_quad2base" args="0. 0. 0. 0. 0. 0. aliengo base_link"/>

@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import GroupAction, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
@@ -14,7 +14,7 @@ def generate_launch_description():
         'rviz', default_value='false',
         description='Flag to launch RViz.')
     sim_time_arg = DeclareLaunchArgument(
-        'use_sim_time', default_value='true',
+        'use_sim_time', default_value='false',
         description='Use simulation time'
     )
     robot_arg = DeclareLaunchArgument(
@@ -30,17 +30,18 @@ def generate_launch_description():
         ]),
         {
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
+            'use_imu_as_input': True,  # Change to True to use IMU as input of Point-LIO
             'prop_at_freq_of_imu': True,
             'check_satu': True,
             'init_map_size': 10,
-            'point_filter_num': 3,  # Options: 1, 3
+            'point_filter_num': 6,  # Options: 1, 3
             'space_down_sample': True,
             'filter_size_surf': 0.5,  # Options: 0.5, 0.3, 0.2, 0.15, 0.1
             'filter_size_map': 0.5,  # Options: 0.5, 0.3, 0.15, 0.1
             'cube_side_length': 1000.0,  # Option: 1000
             'runtime_pos_log_enable': False,  # Option: True
             'ivox_nearby_type': 6,
+            'location_mode':False,
         }
     ]
 
@@ -51,10 +52,11 @@ def generate_launch_description():
         name='laserMapping',
         output='screen',
         parameters=laser_mapping_params,
-        # prefix='gdb -ex run --args'
+        # prefix='gdb -ex run --args', chrt -f 50
+        prefix='taskset -c 0-3 chrt -f 99',
     )
 
-    tf_node = Node(
+    message_to_tf_node = Node(
         package='message_to_tf',
         executable='message_to_tf_node',
         name='message_to_tf',
@@ -66,7 +68,8 @@ def generate_launch_description():
             'footprint_frame_id': '/aft_mapped_footprint',
             'stabilized_frame_id': '/aft_mapped_stabilized',
             'child_frame_id': '/aft_mapped'
-        }]
+        }],
+        prefix='taskset -c 0-3 nice -n -10',
     )
 
     # Conditional RViz node launch
@@ -123,8 +126,9 @@ def generate_launch_description():
         rviz_arg,
         sim_time_arg,
         robot_arg,
+        SetParameter(name='use_sim_time', value=LaunchConfiguration('use_sim_time')),
         laser_mapping_node,
-        tf_node,
+        message_to_tf_node,
         include_xml_launch,
         GroupAction(
             actions=[rviz_node],

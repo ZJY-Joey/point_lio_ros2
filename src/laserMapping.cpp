@@ -111,6 +111,7 @@ nav_msgs::msg::Odometry odomAftMapped;
 geometry_msgs::msg::PoseStamped msg_body_pose;
 
 auto logger = rclcpp::get_logger("laserMapping");
+auto log_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
 
 void SigHandle(int sig) {
     flg_exit = true;
@@ -794,6 +795,54 @@ void publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>:
     }
 }
 
+// 修改后的 publish_frame_body 函数：累积一段时间点云后降频发布
+void publish_frame_body(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudFull_body,
+                        double publish_interval) {
+
+    if (odom_only) {return;}
+
+    // === 定义静态变量用于缓存和计时 ===
+    static PointCloudXYZI::Ptr accumulated_body_cloud(new PointCloudXYZI());
+    static double last_pub_time = -1.0;
+
+    // 1. 将当前帧转换到 Body 坐标系 (原逻辑)
+    int size = feats_undistort->points.size();
+    PointCloudXYZI::Ptr current_frame_body(new PointCloudXYZI(size, 1));
+
+    // 使用 OpenMP 加速转换过程 (可选，与你之前的优化保持一致)
+    // #ifdef MP_EN
+    //   omp_set_num_threads(MP_PROC_NUM);
+    //         #pragma omp parallel for
+    // #endif
+    for (int i = 0; i < size; i++) {
+      pointBodyLidarToIMU(&feats_undistort->points[i], \
+                          &current_frame_body->points[i]);
+    }
+
+    // 2. 将当前帧加入累积缓存
+    *accumulated_body_cloud += *current_frame_body;
+
+    // 初始化计时器
+    if (last_pub_time < 0) last_pub_time = lidar_end_time;
+
+    // 3. 判断是否达到发布时间间隔
+    if (lidar_end_time - last_pub_time >= publish_interval) {
+        sensor_msgs::msg::PointCloud2 laserCloudmsg;
+        pcl::toROSMsg(*accumulated_body_cloud, laserCloudmsg);
+
+        laserCloudmsg.header.stamp = get_ros_time(lidar_end_time);
+        laserCloudmsg.header.frame_id = "body";
+        pubLaserCloudFull_body->publish(laserCloudmsg);
+
+        // 发布后清空缓存并重置计时
+        accumulated_body_cloud->clear();
+        last_pub_time = lidar_end_time;
+
+        // 维持原有的计数逻辑 (可选，防止影响外部计数依赖)
+        publish_count -= PUBFRAME_PERIOD;
+    }
+}
+
 void publish_frame_body(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudFull_body) {
 
     if (odom_only) {return;}
@@ -859,7 +908,7 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
 
     odomAftMapped.header.frame_id = odom_header_frame_id;
     odomAftMapped.child_frame_id = odom_child_frame_id;
-
+    auto time_current = omp_get_wtime();
     if (publish_odometry_without_downsample) {
         odomAftMapped.header.stamp = get_ros_time(time_current);
     } else {
@@ -892,23 +941,20 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
 
     pubOdomAftMapped->publish(odomAftMapped);
 
-    //static tf2_ros::TransformBroadcaster br = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
-    geometry_msgs::msg::TransformStamped transform;
-    transform.header.frame_id = odom_header_frame_id;
-    transform.child_frame_id = odom_child_frame_id;
-
-    transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
-    transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
-    transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
-
-    transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
-    transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
-    transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
-    transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
-
-    transform.header.stamp = odomAftMapped.header.stamp;
-
-    // tf_br->sendTransform(transform);
+    // if (pub_tf) {
+    //     geometry_msgs::msg::TransformStamped transform;
+    //     transform.header.frame_id = odom_header_frame_id;
+    //     transform.child_frame_id = odom_child_frame_id;
+    //     transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
+    //     transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
+    //     transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
+    //     transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
+    //     transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
+    //     transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
+    //     transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
+    //     transform.header.stamp = odomAftMapped.header.stamp;
+    //     tf_br->sendTransform(transform);
+    // }
 
     // Now also publish odometry in the "world" frame for the "aliengo" frame
     // We need to compute the transform: world -> aliengo
@@ -955,7 +1001,6 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
             odomAftMapped.pose.pose.position.y,
             odomAftMapped.pose.pose.position.z)
     );
-
 
     // Correct composition:
     // T_world_aliengo = T_world_camera_init * T_camera_init_aft_mapped * T_aft_mapped_aliengo
@@ -1009,6 +1054,8 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
     }
 
     pub_base_pose->publish(msg_pose);
+    auto time_pub = omp_get_wtime();
+    // RCLCPP_WARN(logger, "publish_odometry time: %f ms", (time_pub - time_current) * 1000.0);
 }
 
 void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath) {
@@ -1099,7 +1146,7 @@ int main(int argc, char **argv) {
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl;
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox_;
     if (p_pre->lidar_type == AVIA) {
-        sub_pcl_livox_ = nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, 20, livox_pcl_cbk);
+        sub_pcl_livox_ = nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, 10, livox_pcl_cbk);
     } else {
     sub_pcl = nh->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
     }
@@ -1124,15 +1171,15 @@ int main(int argc, char **argv) {
 
     if (!odom_only){
         pubLaserCloudFullRes = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_registered", 10);
+                ("/cloud_registered", 100);
         pubLaserCloudFullRes_body = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_registered_body", 10);
+                ("/cloud_registered_body", 100);
         pubLaserCloudEffect = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_effected", 1000);
+                ("/cloud_effected", 100);
         pubLaserCloudMap = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/global_map", 1000);  //changed from laser_map 2 global_map
+                ("/global_map", 100);  //changed from laser_map 2 global_map
         pubPath = nh->create_publisher<nav_msgs::msg::Path>
-                ("/path", 1000);
+                ("/path", 100);
         plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>("/planner_normal", 1000);
     }
 
@@ -1140,18 +1187,18 @@ int main(int argc, char **argv) {
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped;
     if (odom_only){
         pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
-                ("/odom_corrected", 100000);
+                ("/odom_corrected", 100);
     } else {
         pubOdomAftMapped = nh->create_publisher<nav_msgs::msg::Odometry>
-                ("/aft_mapped_to_init", 1000);
+                ("/aft_mapped_to_init", 100);
     }
     pubInitialCloud = nh->create_publisher<sensor_msgs::msg::PointCloud2>
-                ("/cloud_initial", 10);
+                ("/cloud_initial", 100);
 
     pub_base_odom = nh->create_publisher<nav_msgs::msg::Odometry>
-                ("/base_odom", 1000);
+                ("/base_odom", 100);
     pub_base_pose = nh->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>
-                ("/base_pose", 1000);
+                ("/base_pose", 100);
     //auto plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>
     //        ("/planner_normal", 1000);
     //TODO: tf tree should be checked
@@ -1161,9 +1208,33 @@ int main(int argc, char **argv) {
     // create shared buffer and listener (listener stores a reference to the buffer)
     tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
-    tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
-    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
+    // tf_buffer = std::make_shared<tf2_ros::Buffer>(nh->get_clock());
+    // tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, nh);
     
+    // Now also publish odometry in the "world" frame for the "aliengo" frame
+    // We need to compute the transform: world -> aliengo
+    // using the chain:
+    // world -> camera_init (from tf)
+    // camera_init -> aft_mapped (from odomAftMapped)
+    // aft_mapped -> aliengo (from tf)
+    // try {
+    //     RCLCPP_INFO(logger, "Waiting for tf...");
+    //     // use buffer->canTransform / lookupTransform in ROS2
+    //     // std::cout << "canTransform world -> camera_init: "
+    //     //           << tf_buffer->canTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))
+    //     //           << std::endl;
+
+    //     // if (!tf_buffer->canTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
+    //     //     RCLCPP_WARN(logger, "can't transform world -> camera_init yet");
+    //     // }
+    //     // if (!tf_buffer->canTransform("aft_mapped", "aliengo", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
+    //     //     RCLCPP_WARN(logger, "can't transform aft_mapped -> aliengo yet");
+    //     // }
+    //     tf_world2odom = tf_buffer->lookupTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(5.0));
+    //     tf_aft2base = tf_buffer->lookupTransform("aft_mapped", "aliengo", rclcpp::Time(0), rclcpp::Duration::from_seconds(5.0));
+    // } catch (tf2::TransformException &ex) {
+    //     RCLCPP_WARN(logger, "%s", ex.what());
+    // }
 
     ///  读取地图点云并发布
     if (location_mode) {
@@ -1188,6 +1259,7 @@ int main(int argc, char **argv) {
     double last_publish_global_map_time = omp_get_wtime();
     rclcpp::Rate rate(5000);
     while (rclcpp::ok()) {
+        auto loop_start = omp_get_wtime();
         if (flg_exit) break;
         //ros::spinOnce();
         rclcpp::executors::SingleThreadedExecutor executor;
@@ -1213,6 +1285,17 @@ int main(int argc, char **argv) {
                 last_publish_global_map_time = omp_get_wtime();
             }
         }
+        // 如果内部缓存积压了超过1帧（说明处理慢了），直接丢弃旧的，只保留最新的一帧
+        mtx_buffer.lock();
+        if (lidar_buffer.size() > 1) {
+            // 保留最后一个（最新的），其他的删掉
+            while (lidar_buffer.size() > 1) {
+                lidar_buffer.pop_front();
+                time_buffer.pop_front();
+            }
+            RCLCPP_WARN(logger, "Drop old lidar frames to reduce lag!");
+        }
+        mtx_buffer.unlock();
 
         if (sync_packages(Measures)) {
             //location mode to initial pose
@@ -1220,8 +1303,8 @@ int main(int argc, char **argv) {
                 PointCloudXYZI::Ptr init_world(new PointCloudXYZI());
                 init_world->resize(Measures.lidar->points.size());
                 for (int i = 0; i < Measures.lidar->points.size(); i++) {
-                pointBodyToWorld(&(Measures.lidar->points[i]),
-                                &(init_world->points[i]));
+                    pointBodyToWorld(&(Measures.lidar->points[i]),
+                                     &(init_world->points[i]));
                 }
 
                 if (init_total_world->points.size() > 10000) {
@@ -1254,6 +1337,7 @@ int main(int argc, char **argv) {
             propag_time = 0;
             update_time = 0;
             t0 = omp_get_wtime();
+            // RCLCPP_INFO(logger, "LIO mapping process time t0: %f ms", (t0 - loop_start) * 1000.0);
 
             p_imu->Process(Measures, feats_undistort);
 
@@ -1332,6 +1416,7 @@ int main(int argc, char **argv) {
             lasermap_fov_segment();
             /*** downsample the feature points in a scan ***/
             t1 = omp_get_wtime();
+            // RCLCPP_INFO(logger, "LIO mapping process time t1: %f ms", (t1 - loop_start) * 1000.0);
             if (space_down_sample) {
                 downSizeFilterSurf.setInputCloud(feats_undistort);
                 downSizeFilterSurf.filter(*feats_down_body);
@@ -1375,6 +1460,7 @@ int main(int argc, char **argv) {
             Nearest_Points.resize(feats_down_size);
 
             t2 = omp_get_wtime();
+            // RCLCPP_INFO(logger, "LIO mapping process time t2: %f ms", (t2 - loop_start) * 1000.0);
 
             /*** iterated state estimation ***/
             crossmat_list.reserve(feats_down_size);
@@ -1540,11 +1626,15 @@ int main(int argc, char **argv) {
                     // cout << "pbp output effect feat num:" << effct_feat_num << endl;
                 }
             } else {
+                auto estimate_start = omp_get_wtime();
                 bool imu_prop_cov = false;
                 effct_feat_num = 0;
 
                 double pcl_beg_time = Measures.lidar_beg_time;
                 idx = -1;
+                double now = rclcpp::Clock().now().seconds();
+                // RCLCPP_INFO_THROTTLE(logger, log_clock, 500.0, "Time Seq size: %d", (int)time_seq.size());
+                RCLCPP_INFO_THROTTLE(logger, *log_clock, 500.0, "lidar elapsed time: %f ms", (now - pcl_beg_time) * 1000.0);
                 for (k = 0; k < time_seq.size(); k++) {
                     PointType &point_body = feats_down_body->points[idx + time_seq[k]];
                     time_current = point_body.curvature / 1000.0 + pcl_beg_time;
@@ -1689,25 +1779,30 @@ int main(int argc, char **argv) {
                     update_time += omp_get_wtime() - t_update_start;
                     idx = idx + time_seq[k];
                 }
+                // RCLCPP_INFO(logger, "LIO mapping IMU input state estimation time: %f ms", (omp_get_wtime() - estimate_start) * 1000.0);
             }
 
+            t3 = omp_get_wtime();
+            // RCLCPP_INFO(logger, "LIO mapping process time t3: %f ms", (t3 - loop_start) * 1000.0);
             /******* Publish odometry downsample *******/
             if (!publish_odometry_without_downsample) {
                 publish_odometry(pubOdomAftMapped, tf_broadcaster);
             }
 
             /*** add the feature points to map kdtree ***/
-            t3 = omp_get_wtime();
+            t4 = omp_get_wtime();
+            // RCLCPP_INFO(logger, "LIO mapping process time t4: %f ms", (t4 - loop_start) * 1000.0);
 
             if (!location_mode && feats_down_size > 4) {
                 map_incremental();
             }
 
             t5 = omp_get_wtime();
+            RCLCPP_INFO_THROTTLE(logger, *log_clock, 500.0, "LIO mapping process time: %f ms", (t5 - loop_start) * 1000.0);
             /******* Publish points *******/
             if (path_en) publish_path(pubPath);
             if (scan_pub_en || pcd_save_en) publish_frame_world(pubLaserCloudFullRes);
-            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
+            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body, 0.10);
 
             /*** Debug variables Logging ***/
             if (runtime_pos_log) {

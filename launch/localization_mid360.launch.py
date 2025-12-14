@@ -14,11 +14,14 @@ def generate_launch_description():
         'rviz', default_value='true',
         description='Flag to launch RViz.')
     sim_time_arg = DeclareLaunchArgument(
-        'use_sim_time', default_value='true',
+        'use_sim_time', default_value='false',
         description='Use simulation time'
     )
     robot_arg = DeclareLaunchArgument(
         'robot', default_value=''
+    )
+    map_file = DeclareLaunchArgument(
+        'map_file', default_value=''
     )
 
     # Node parameters, including those from the YAML configuration file
@@ -30,7 +33,7 @@ def generate_launch_description():
         ]),
         {
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'use_imu_as_input': True,  # Change to True to use IMU as input of Point-LIO
+            'use_imu_as_input': False,  # Change to True to use IMU as input of Point-LIO
             'prop_at_freq_of_imu': False,
             'check_satu': True,
             'init_map_size': 10,
@@ -44,7 +47,7 @@ def generate_launch_description():
             # localization parameters
             'location_mode':True,
             'initial_z': 0.0,
-            'map_path': '/home/unitree/atecup_ws/maps/0405_csc1floor.pcd',
+            'map_path': '/home/jetson/atec/lio_elevation_ws/maps/0405_csc1floor.pcd',
             'publish/scan_bodyframe_pub_en': True,
             'pcd_save/pcd_save_en': False,
         }
@@ -57,7 +60,7 @@ def generate_launch_description():
         name='laserMapping',
         output='screen',
         parameters=laser_mapping_params,
-        prefix='taskset -c 2-7'
+        prefix='taskset -c 0-3 nice -n -10',
     )
 
     # Conditional RViz node launch
@@ -86,7 +89,8 @@ def generate_launch_description():
             'footprint_frame_id': '/aft_mapped_footprint',
             'stabilized_frame_id': '/aft_mapped_stabilized',
             'child_frame_id': '/aft_mapped'
-        }]
+        }],
+        prefix='taskset -c 0-3 nice -n -10',
     )
 
     pkg_share_dir = get_package_share_directory('point_lio')

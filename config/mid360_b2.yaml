@@ -47,7 +47,7 @@
             # extrinsic_R: [ 1, 0, 0,
             #                0, 1, 0,
             #                0, 0, 1 ]
-            extrinsic_T: [ 0.301, 0.023, 0.139 ]
+            extrinsic_T: [ 0.341, 0.023, 0.129 ]
             extrinsic_R: [ 0.0000000, -0.9848077,  0.1736482,
                         1.0000000,  0.0000000, -0.0000000,
                         0.0000000,  0.1736482,  0.9848077 ]
@@ -58,9 +58,10 @@
         publish:
             path_en: true                 # false: close the path output
             scan_publish_en: true         # false: close all the point cloud output
-            scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+            scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
+            pub_tf: false                # true: publish the TF between "camera_init" and "aft_mapped"
 
         pcd_save:
-            pcd_save_en: true
+            pcd_save_en: false
             interval: -1                 # how many LiDAR frames saved in each pcd file;
                                         # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
