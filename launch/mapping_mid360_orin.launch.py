@@ -23,7 +23,7 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare('point_lio'),
                 'config',
-                'mid360.yaml'
+                'mid360_orin.yaml'
             ]),
             {
                 'use_sim_time': LaunchConfiguration('use_sim_time'),
@@ -41,7 +41,7 @@ def generate_launch_description():
                 'location_mode': False,
             }
         ],
-        prefix='taskset -c 0-3 chrt -f 99',
+        prefix='taskset -c 0-3 nice -n -10',
     )
 
     rviz_node = Node(

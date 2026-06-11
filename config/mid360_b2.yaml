@@ -10,7 +10,7 @@
             con_frame_num: 10 # the number of frames combined
             cut_frame: false # true: if you need to cut one LiDAR frame into several subframes
             cut_frame_time_interval: 0.1 # should be integral fraction of 1 / LiDAR frequency
-            time_diff_lidar_to_imu: 0.0 # Time offset between LiDAR and IMU calibrated by other algorithms, e.g., LI-Init (find in Readme)
+            time_lag_imu_to_lidar: 0.0 # Time offset between LiDAR and IMU calibrated by other algorithms, e.g., LI-Init (find in Readme)
 
         lidar_opt:
             enable: false
@@ -60,6 +60,7 @@
             scan_publish_en: true         # false: close all the point cloud output
             scan_bodyframe_pub_en: false  # true: output the point cloud scans in IMU-body-frame
             pub_tf: false                # true: publish the TF between "camera_init" and "aft_mapped"
+            publish_base_outputs: true    # true: publish B2 base odometry/pose using world->camera_init and aft_mapped->aliengo TF
 
         pcd_save:
             pcd_save_en: false

@@ -941,48 +941,33 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
 
     pubOdomAftMapped->publish(odomAftMapped);
 
-    // if (pub_tf) {
-    //     geometry_msgs::msg::TransformStamped transform;
-    //     transform.header.frame_id = odom_header_frame_id;
-    //     transform.child_frame_id = odom_child_frame_id;
-    //     transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
-    //     transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
-    //     transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
-    //     transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
-    //     transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
-    //     transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
-    //     transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
-    //     transform.header.stamp = odomAftMapped.header.stamp;
-    //     tf_br->sendTransform(transform);
-    // }
+    if (pub_tf) {
+        geometry_msgs::msg::TransformStamped transform;
+        transform.header.frame_id = odom_header_frame_id;
+        transform.child_frame_id = odom_child_frame_id;
+        transform.transform.translation.x = odomAftMapped.pose.pose.position.x;
+        transform.transform.translation.y = odomAftMapped.pose.pose.position.y;
+        transform.transform.translation.z = odomAftMapped.pose.pose.position.z;
+        transform.transform.rotation.w = odomAftMapped.pose.pose.orientation.w;
+        transform.transform.rotation.x = odomAftMapped.pose.pose.orientation.x;
+        transform.transform.rotation.y = odomAftMapped.pose.pose.orientation.y;
+        transform.transform.rotation.z = odomAftMapped.pose.pose.orientation.z;
+        transform.header.stamp = odomAftMapped.header.stamp;
+        tf_br->sendTransform(transform);
+    }
 
-    // Now also publish odometry in the "world" frame for the "aliengo" frame
-    // We need to compute the transform: world -> aliengo
-    // using the chain:
-    // world -> camera_init (from tf)
-    // camera_init -> aft_mapped (from odomAftMapped)
-    // aft_mapped -> aliengo (from tf)
+    if (!publish_base_outputs) {
+        return;
+    }
+
     try {
-        // RCLCPP_INFO(logger, "Waiting for tf...");s
-        // use buffer->canTransform / lookupTransform in ROS2
-        // std::cout << "canTransform world -> camera_init: "
-        //           << tf_buffer->canTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))
-        //           << std::endl;
-    
-        // if (!tf_buffer->canTransform("world", "camera_init", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
-        //     RCLCPP_WARN(logger, "can't transform world -> camera_init yet");
-        // }
-        // if (!tf_buffer->canTransform("aft_mapped", "aliengo", rclcpp::Time(0), rclcpp::Duration::from_seconds(1.0))) {
-        //     RCLCPP_WARN(logger, "can't transform aft_mapped -> aliengo yet");
-        // }
         tf_world2odom = tf_buffer->lookupTransform("world", "camera_init", rclcpp::Time(0));
         tf_aft2base = tf_buffer->lookupTransform("aft_mapped", "aliengo", rclcpp::Time(0));
     } catch (tf2::TransformException &ex) {
         RCLCPP_WARN(logger, "%s", ex.what());
+        return;
     }
 
-
-    // Transform calculations
     tf2::Transform tf_world2odom_tf, tf_aft2base_tf;
     tf2::fromMsg(tf_world2odom.transform, tf_world2odom_tf); // maps camera_init -> world (p_world = tf_world2odom_tf * p_camera_init)
     tf2::fromMsg(tf_aft2base.transform, tf_aft2base_tf);     // maps aliengo -> aft_mapped (p_aft = tf_aft2base_tf * p_aliengo)
@@ -1195,10 +1180,12 @@ int main(int argc, char **argv) {
     pubInitialCloud = nh->create_publisher<sensor_msgs::msg::PointCloud2>
                 ("/cloud_initial", 100);
 
-    pub_base_odom = nh->create_publisher<nav_msgs::msg::Odometry>
-                ("/base_odom", 100);
-    pub_base_pose = nh->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>
-                ("/base_pose", 100);
+    if (publish_base_outputs) {
+        pub_base_odom = nh->create_publisher<nav_msgs::msg::Odometry>
+                    ("/base_odom", 100);
+        pub_base_pose = nh->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>
+                    ("/base_pose", 100);
+    }
     //auto plane_pub = nh->create_publisher<visualization_msgs::msg::Marker>
     //        ("/planner_normal", 1000);
     //TODO: tf tree should be checked

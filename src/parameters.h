@@ -47,7 +47,7 @@ extern int lidar_type, pcd_save_interval;
 extern std::vector<double> gravity_init, gravity;
 extern std::vector<double> extrinT;
 extern std::vector<double> extrinR;
-extern bool runtime_pos_log, pcd_save_en, path_en, pub_tf;
+extern bool runtime_pos_log, pcd_save_en, path_en, pub_tf, publish_base_outputs;
 extern bool scan_pub_en, scan_body_pub_en;
 extern shared_ptr<Preprocess> p_pre;
 extern double time_lag_imu_to_lidar;

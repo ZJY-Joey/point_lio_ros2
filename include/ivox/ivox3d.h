@@ -5,7 +5,9 @@
 #ifndef FASTER_LIO_IVOX3D_H
 #define FASTER_LIO_IVOX3D_H
 
+#if __has_include(<glog/logging.h>)
 #include <glog/logging.h>
+#endif
 // #include <execution>
 #include <list>
 #include <thread>
