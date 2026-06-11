@@ -57,6 +57,8 @@ mutex init_lock;
 std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 std::shared_ptr<tf2_ros::TransformListener> tf_listener;
 geometry_msgs::msg::TransformStamped tf_world2odom, tf_aft2base;
+tf2::Transform tf_odom2base_initial;
+bool base_odom_initialized = false;
 
 /// @brief 基座里程计发布器
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_base_odom;
@@ -960,22 +962,9 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
         return;
     }
 
-    try {
-        tf_world2odom = tf_buffer->lookupTransform("world", "camera_init", rclcpp::Time(0));
-        tf_aft2base = tf_buffer->lookupTransform("aft_mapped", "aliengo", rclcpp::Time(0));
-    } catch (tf2::TransformException &ex) {
-        RCLCPP_WARN(logger, "%s", ex.what());
-        return;
-    }
-
-    tf2::Transform tf_world2odom_tf, tf_aft2base_tf;
-    tf2::fromMsg(tf_world2odom.transform, tf_world2odom_tf); // maps camera_init -> world (p_world = tf_world2odom_tf * p_camera_init)
-    tf2::fromMsg(tf_aft2base.transform, tf_aft2base_tf);     // maps aliengo -> aft_mapped (p_aft = tf_aft2base_tf * p_aliengo)
-
-    // Build transform for camera_init -> aft_mapped from the odometry we just published.
-    // odomAftMapped.pose.pose is the pose of 'aft_mapped' in 'camera_init' frame,
-    // which corresponds to a transform that maps aft_mapped -> camera_init (p_camera_init = T_cameraInit_aft * p_aft).
-    tf2::Transform tf_cameraInit2aft(
+    // Build transform for odom_header_frame_id -> odom_child_frame_id from the odometry we just published.
+    // odomAftMapped.pose.pose is the pose of odom_child_frame_id in odom_header_frame_id frame.
+    tf2::Transform tf_odom2aft(
         tf2::Quaternion(
             odomAftMapped.pose.pose.orientation.x,
             odomAftMapped.pose.pose.orientation.y,
@@ -987,45 +976,92 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
             odomAftMapped.pose.pose.position.z)
     );
 
-    // Correct composition:
-    // T_world_aliengo = T_world_camera_init * T_camera_init_aft_mapped * T_aft_mapped_aliengo
-    // Note: tf_aft2base_tf (from lookupTransform("aft_mapped","aliengo")) maps aliengo -> aft_mapped,
-    // so it is T_aft_mapped_aliengo as needed in the chain.
-    tf2::Transform tf_world2base = tf_world2odom_tf * tf_cameraInit2aft * tf_aft2base_tf;
+    tf2::Transform tf_base_odom;
+    tf2::Transform tf_abs_odom2base;
+    std::string base_odom_output_frame = base_odom_frame_id;
+
+    try {
+        tf_aft2base = tf_buffer->lookupTransform(
+                base_tf_parent_frame_id, base_tf_child_frame_id, rclcpp::Time(0));
+        tf2::Transform tf_aft2base_tf;
+        tf2::fromMsg(tf_aft2base.transform, tf_aft2base_tf);
+
+        tf_abs_odom2base = tf_odom2aft * tf_aft2base_tf;
+
+        if (base_output_mode == "relative_base") {
+            if (!base_odom_initialized) {
+                tf_odom2base_initial = tf_abs_odom2base;
+                base_odom_initialized = true;
+                RCLCPP_INFO(logger, "Initialized %s frame from first %s pose",
+                            base_odom_frame_id.c_str(), base_tf_child_frame_id.c_str());
+            }
+            tf_base_odom = tf_odom2base_initial.inverse() * tf_abs_odom2base;
+        } else {
+            tf_world2odom = tf_buffer->lookupTransform(
+                    base_odom_frame_id, odom_header_frame_id, rclcpp::Time(0));
+            tf2::Transform tf_world2odom_tf;
+            tf2::fromMsg(tf_world2odom.transform, tf_world2odom_tf);
+            tf_base_odom = tf_world2odom_tf * tf_abs_odom2base;
+        }
+    } catch (tf2::TransformException &ex) {
+        RCLCPP_WARN_THROTTLE(logger, *log_clock, 2000, "%s", ex.what());
+        return;
+    }
 
     // Now fill odom_msg from tf_world2base
     nav_msgs::msg::Odometry odom_msg;
     odom_msg.header.stamp = odomAftMapped.header.stamp;
-    odom_msg.header.frame_id = "world";
-    odom_msg.child_frame_id = "aliengo";
-    odom_msg.pose.pose.position.x = tf_world2base.getOrigin().x();
-    odom_msg.pose.pose.position.y = tf_world2base.getOrigin().y();
-    odom_msg.pose.pose.position.z = tf_world2base.getOrigin().z();
+    odom_msg.header.frame_id = base_odom_output_frame;
+    odom_msg.child_frame_id = base_child_frame_id;
+    odom_msg.pose.pose.position.x = tf_base_odom.getOrigin().x();
+    odom_msg.pose.pose.position.y = tf_base_odom.getOrigin().y();
+    odom_msg.pose.pose.position.z = tf_base_odom.getOrigin().z();
     geometry_msgs::msg::Quaternion orientation_msg;
-    tf2::convert(tf_world2base.getRotation(), orientation_msg);
+    tf2::convert(tf_base_odom.getRotation(), orientation_msg);
     odom_msg.pose.pose.orientation = orientation_msg;
+    odom_msg.pose.covariance = odomAftMapped.pose.covariance;
+    odom_msg.twist.covariance = odomAftMapped.twist.covariance;
 
-    // Transform linear velocity from world to base as before
-    tf2::Vector3 twist_world(odomAftMapped.twist.twist.linear.x,
-                             odomAftMapped.twist.twist.linear.y,
-                             odomAftMapped.twist.twist.linear.z);
-    tf2::Matrix3x3 q_world(tf_world2base.getRotation());
-    tf2::Vector3 twist_base = q_world.inverse() * twist_world;
+    if (base_output_mode == "relative_base") {
+        // odomAftMapped velocity is expressed in odom_header_frame_id. Rotate it into the base frame.
+        tf2::Vector3 linear_odom(odomAftMapped.twist.twist.linear.x,
+                                 odomAftMapped.twist.twist.linear.y,
+                                 odomAftMapped.twist.twist.linear.z);
+        tf2::Vector3 angular_odom(odomAftMapped.twist.twist.angular.x,
+                                  odomAftMapped.twist.twist.angular.y,
+                                  odomAftMapped.twist.twist.angular.z);
+        tf2::Matrix3x3 abs_base_rotation(tf_abs_odom2base.getRotation());
+        tf2::Vector3 linear_base = abs_base_rotation.inverse() * linear_odom;
+        tf2::Vector3 angular_base = abs_base_rotation.inverse() * angular_odom;
+        odom_msg.twist.twist.linear.x = linear_base.x();
+        odom_msg.twist.twist.linear.y = linear_base.y();
+        odom_msg.twist.twist.linear.z = linear_base.z();
+        odom_msg.twist.twist.angular.x = angular_base.x();
+        odom_msg.twist.twist.angular.y = angular_base.y();
+        odom_msg.twist.twist.angular.z = angular_base.z();
+    } else {
+        // Preserve the original B2 behavior.
+        tf2::Vector3 twist_world(odomAftMapped.twist.twist.linear.x,
+                                 odomAftMapped.twist.twist.linear.y,
+                                 odomAftMapped.twist.twist.linear.z);
+        tf2::Matrix3x3 q_world(tf_base_odom.getRotation());
+        tf2::Vector3 twist_base = q_world.inverse() * twist_world;
 
-    odom_msg.twist.twist.linear.x = twist_base.x();
-    odom_msg.twist.twist.linear.y = twist_base.y();
-    odom_msg.twist.twist.angular.z = odomAftMapped.twist.twist.angular.z;
+        odom_msg.twist.twist.linear.x = twist_base.x();
+        odom_msg.twist.twist.linear.y = twist_base.y();
+        odom_msg.twist.twist.angular.z = odomAftMapped.twist.twist.angular.z;
+    }
 
     pub_base_odom->publish(odom_msg);
 
     geometry_msgs::msg::PoseWithCovarianceStamped msg_pose;
-    msg_pose.header.frame_id = "world";
+    msg_pose.header.frame_id = base_odom_output_frame;
     msg_pose.header.stamp = rclcpp::Time(lidar_end_time * 1e9);
-    msg_pose.pose.pose.position.x = tf_world2base.getOrigin().x();
-    msg_pose.pose.pose.position.y = tf_world2base.getOrigin().y();
-    msg_pose.pose.pose.position.z = tf_world2base.getOrigin().z();
+    msg_pose.pose.pose.position.x = tf_base_odom.getOrigin().x();
+    msg_pose.pose.pose.position.y = tf_base_odom.getOrigin().y();
+    msg_pose.pose.pose.position.z = tf_base_odom.getOrigin().z();
     geometry_msgs::msg::Quaternion quat_msg;
-    tf2::convert(tf_world2base.getRotation(), quat_msg);
+    tf2::convert(tf_base_odom.getRotation(), quat_msg);
     msg_pose.pose.pose.orientation = quat_msg;
 
     Eigen::Matrix<double, 6, 6> cov;

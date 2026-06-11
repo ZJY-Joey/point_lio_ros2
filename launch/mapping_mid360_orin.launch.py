@@ -44,6 +44,22 @@ def generate_launch_description():
         prefix='taskset -c 0-3 nice -n -10',
     )
 
+    aft_mapped_to_base_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='tf_aft_mapped_to_base',
+        arguments=[
+            '--x', '-0.2',
+            '--y', '0.0',
+            '--z', '0.0',
+            '--yaw', '-1.5708',
+            '--pitch', '0.0',
+            '--roll', '0.0',
+            '--frame-id', 'aft_mapped',
+            '--child-frame-id', 'base',
+        ],
+    )
+
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -61,6 +77,7 @@ def generate_launch_description():
         rviz_arg,
         sim_time_arg,
         laser_mapping_node,
+        aft_mapped_to_base_tf,
         GroupAction(
             actions=[rviz_node],
             condition=IfCondition(LaunchConfiguration('rviz'))

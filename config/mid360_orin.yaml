@@ -52,7 +52,12 @@
             scan_publish_en: false
             scan_bodyframe_pub_en: false
             pub_tf: true
-            publish_base_outputs: false
+            publish_base_outputs: true
+            base_output_mode: "relative_base"
+            base_odom_frame_id: "base_init"
+            base_child_frame_id: "base"
+            base_tf_parent_frame_id: "aft_mapped"
+            base_tf_child_frame_id: "base"
 
         pcd_save:
             pcd_save_en: false
