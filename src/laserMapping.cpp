@@ -1167,7 +1167,8 @@ int main(int argc, char **argv) {
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl;
     rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox_;
     if (p_pre->lidar_type == AVIA) {
-        sub_pcl_livox_ = nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, 10, livox_pcl_cbk);
+        auto livox_qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
+        sub_pcl_livox_ = nh->create_subscription<livox_ros_driver2::msg::CustomMsg>(lid_topic, livox_qos, livox_pcl_cbk);
     } else {
     sub_pcl = nh->create_subscription<sensor_msgs::msg::PointCloud2>(lid_topic, rclcpp::SensorDataQoS(), standard_pcl_cbk);
     }
